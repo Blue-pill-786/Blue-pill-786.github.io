@@ -1,0 +1,103 @@
+body{
+   
+    /* background-image: url(https://png.pngtree.com/background/20210715/original/pngtree-blue-geometric-alarm-clock-background-picture-image_1284646.jpg); */
+    margin: auto;
+  width: 70%;
+  /* border: 3px solid green; */
+  padding: 10px;
+  height: 70%;
+  border-radius: 40px;
+  
+}
+
+.title{
+    margin: auto;
+    text-align: center;
+    width: 40%;
+    /* border: 3px solid green; */
+    border-radius: 30px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    padding: 10px;
+    background-image: linear-gradient(to right, white , yellow, red);
+}
+
+.outer{
+    margin: auto;
+    width: 70%;
+    height: 500px;
+    /* border: 3px solid green; */
+    padding: 10px;
+    border-radius: 30px;
+    background-image: linear-gradient(to bottom, pink, yellow, white);
+}
+#alarmTime{
+    margin: auto;
+    background-image: linear-gradient(to right, rgb(13, 231, 122) , yellow);
+    width: 50%;
+    border-radius: 20px;
+    border: 3px double black;
+    padding: 10px;
+    margin-left: 28%;
+    margin-top: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: center;
+}
+#alarmTimeLabel{
+    display: block;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-weight: 700;
+    text-align: center;
+    margin: auto;
+    margin-top: 30px;
+    margin-left: 28%;
+    width: 50%;
+    border-radius: 20px;
+    /* border: 3px solid blue; */
+    padding: 10px;
+
+}
+
+#setAlarm{
+    margin: auto;
+    margin-top: 50px;
+    width: 40%;
+    margin-left: 35%;
+    /* border: 3px solid green; */
+    padding: 10px;
+    border-radius: 20px;
+    background-image: linear-gradient(to right, rgb(30, 243, 232) , yellow);
+   
+}
+#stopAlarm{
+    background-image: linear-gradient(to right, YELLOW, rgb(30, 243, 232) );
+    margin: auto;
+    margin-top: 30px;
+    margin-left: 35%;
+    width: 40%;
+    border: 2px solid black;
+    padding: 10px;
+    border-radius: 20px;
+}
+
+#current-time{
+    font-size: larger;
+    font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+    font-weight: 700;
+    font-style: oblique;
+    margin: auto;
+    margin-top: 10px;
+    margin-left: 45%;
+    width: 40%;
+    /* border: 3px solid green; */
+    padding: 10px;
+    border-radius: 20px;
+
+}
+.time{
+    margin: auto;
+    margin-top: 10px;
+    margin-left: 50%;
+    width: 40%;
+}
