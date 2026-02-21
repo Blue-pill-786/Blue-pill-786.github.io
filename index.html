@@ -1,25 +1,63 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Alarm Clock</title>
-    <link rel="stylesheet" href="clock.css">
+    <link rel="stylesheet" href="clock.css" />
   </head>
   <body>
-      <h1 class="title">
-      <img src="https://cdn-icons-png.flaticon.com/512/2997/2997985.png" height="30px"/>  Alarm Clock
-    </h1>
-      <div class="outer">
-        <div class="time"><img src="https://cdn-icons-png.flaticon.com/512/2972/2972531.png" height="16px"/>Time</div>
-        <div id="current-time"></div>
-        
-       
-      <label for="alarmTime" id="alarmTimeLabel">Set Alarm Time</label>
-      <input type="time" id="alarmTime">
+    <main class="app">
+      <header class="topbar">
+        <h1 class="title">
+          <img
+            src="https://cdn-icons-png.flaticon.com/512/2997/2997985.png"
+            alt="Alarm icon"
+            height="30"
+          />
+          Pro Alarm Clock
+        </h1>
+        <p id="timezone" class="timezone">Local Timezone</p>
+      </header>
 
-     
-      <button id="setAlarm">Set Alarm</button>
-      <button id="stopAlarm" disabled>Stop Alarm</button>
-    </div>
+      <section class="card hero" aria-live="polite">
+        <p class="clock-label">
+          <img
+            src="https://cdn-icons-png.flaticon.com/512/2972/2972531.png"
+            alt="Clock icon"
+            height="16"
+          />
+          Real-time Clock
+        </p>
+        <p id="current-time" class="current-time">--:--:--</p>
+        <p id="current-date" class="current-date">Loading date...</p>
+
+        <div class="countdown-wrap">
+          <p class="countdown-label">Time until alarm</p>
+          <p id="countdown" class="countdown">No active alarm</p>
+        </div>
+      </section>
+
+      <section class="card controls">
+        <label for="alarmTime" id="alarmTimeLabel">Set Alarm Time</label>
+        <div class="input-row">
+          <input type="time" id="alarmTime" />
+          <label class="daily-toggle" for="dailyMode">
+            <input type="checkbox" id="dailyMode" />
+            Repeat daily
+          </label>
+        </div>
+
+        <div class="button-row">
+          <button id="setAlarm">Set Alarm</button>
+          <button id="stopAlarm" disabled>Cancel Alarm</button>
+          <button id="snoozeAlarm" disabled>Snooze 5 min</button>
+        </div>
+
+        <p id="alarm-status" class="alarm-status">No alarm set.</p>
+      </section>
+    </main>
+
     <script src="alarm-clock.js"></script>
   </body>
 </html>
