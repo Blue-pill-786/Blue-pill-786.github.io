@@ -1,95 +1,225 @@
-// Get references to the HTML elements we need to interact with
-const alarmTimeInput = document.getElementById('alarmTime');
-const setAlarmButton = document.getElementById('setAlarm');
-const stopAlarmButton = document.getElementById('stopAlarm');
+const alarmTimeInput = document.getElementById("alarmTime");
+const dailyModeInput = document.getElementById("dailyMode");
+const setAlarmButton = document.getElementById("setAlarm");
+const stopAlarmButton = document.getElementById("stopAlarm");
+const snoozeAlarmButton = document.getElementById("snoozeAlarm");
+const currentTimeElement = document.getElementById("current-time");
+const currentDateElement = document.getElementById("current-date");
+const alarmStatusElement = document.getElementById("alarm-status");
+const countdownElement = document.getElementById("countdown");
+const timezoneElement = document.getElementById("timezone");
 
-let alarmTimeoutId; // Keep track of the setTimeout ID
-//get time string
-const getTimeString = ({ hours, minutes, seconds, zone }) => {
-    if (minutes / 10 < 1) {
-      minutes = "0" + minutes;
-    }
-    if (seconds / 10 < 1) {
-      seconds = "0" + seconds;
-    }
-    return `${hours}:${minutes}:${seconds} ${zone}`;
-  };
+const STORAGE_KEY = "alarm-clock-settings";
+const SNOOZE_MINUTES = 5;
 
+let alarmTimeoutId = null;
+let nextAlarmDate = null;
+let isDaily = false;
+let isRinging = false;
+let oscillator = null;
+let audioContext = null;
 
+const twoDigits = (value) => String(value).padStart(2, "0");
 
+const formatTime = (date) => {
+  let hours = date.getHours();
+  const minutes = twoDigits(date.getMinutes());
+  const seconds = twoDigits(date.getSeconds());
+  const zone = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
 
-  const renderTime = () => {
-    var currentTime = document.getElementById("current-time");
-   
-  const currentDate = new Date();
-  var hours = currentDate.getHours();
-  var minutes = currentDate.getMinutes();
-  var seconds = currentDate.getSeconds();
-  var zone = hours >= 12 ? "PM" : "AM";
-  if (hours > 12) {
-    hours = hours % 12;
-  }
-  const timeString = getTimeString({ hours, minutes, seconds, zone });
-  currentTime.innerHTML = timeString;
-  
-
+  return `${hours}:${minutes}:${seconds} ${zone}`;
 };
 
+const formatDate = (date) =>
+  date.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
+const formatDuration = (milliseconds) => {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
+  return `${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}`;
+};
 
-// Update time every second
-setInterval(renderTime, 1000);
+const setStatus = (message, mode = "") => {
+  alarmStatusElement.textContent = message;
+  alarmStatusElement.classList.remove("active", "ringing");
+  if (mode) {
+    alarmStatusElement.classList.add(mode);
+  }
+};
 
-// Add a click event listener to the "Set Alarm" button
-setAlarmButton.addEventListener('click', function() {
-  const alarmTime = alarmTimeInput.value;
+const saveSettings = () => {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      alarmTime: alarmTimeInput.value,
+      dailyMode: dailyModeInput.checked,
+    })
+  );
+};
 
-  // Check if the user has entered a valid alarm time
-  if (alarmTime === '') {
-    alert('Please enter a valid alarm time!');
+const loadSettings = () => {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
     return;
   }
 
-  // Disable the "Set Alarm" button and enable the "Stop Alarm" button
-  setAlarmButton.disabled = true;
-  stopAlarmButton.disabled = false;
+  try {
+    const parsed = JSON.parse(raw);
+    alarmTimeInput.value = parsed.alarmTime || "";
+    dailyModeInput.checked = Boolean(parsed.dailyMode);
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+};
 
-  // Calculate the number of milliseconds until the alarm should go off
+const renderClock = () => {
   const now = new Date();
+  currentTimeElement.textContent = formatTime(now);
+  currentDateElement.textContent = formatDate(now);
 
-//   const time = new time();
-  const [hours, minutes] = alarmTime.split(':');
-  const alarmTimeDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
-  let timeUntilAlarm = alarmTimeDate - now;
+  if (nextAlarmDate) {
+    countdownElement.textContent = formatDuration(nextAlarmDate - now);
+  } else {
+    countdownElement.textContent = "No active alarm";
+  }
+};
 
-  // If the alarm time is already in the past, add 1 day to the timeUntilAlarm value to schedule the alarm for tomorrow
-  if (timeUntilAlarm < 0) {
-    timeUntilAlarm += 24 * 60 * 60 * 1000;
+const stopSound = () => {
+  if (oscillator) {
+    oscillator.stop();
+    oscillator.disconnect();
+    oscillator = null;
+  }
+};
+
+const startSound = () => {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
   }
 
-  // Set a timeout to trigger the alarm
-  alarmTimeoutId = setTimeout(function() {
-    alert('Wake up!');
-    setAlarmButton.disabled = false;
-    stopAlarmButton.disabled = true;
-  }, timeUntilAlarm);
-});
+  if (audioContext.state === "suspended") {
+    audioContext.resume();
+  }
 
-// Add a click event listener to the "Stop Alarm" button
-stopAlarmButton.addEventListener('click', function() {
-  // Stop the currently scheduled timeout
+  oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.type = "square";
+  oscillator.frequency.value = 880;
+  gain.gain.value = 0.05;
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start();
+};
+
+const nextOccurrence = (hours, minutes) => {
+  const now = new Date();
+  const next = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    hours,
+    minutes,
+    0,
+    0
+  );
+
+  if (next <= now) {
+    next.setDate(next.getDate() + 1);
+  }
+
+  return next;
+};
+
+const scheduleAlarm = (alarmDate) => {
   clearTimeout(alarmTimeoutId);
+  nextAlarmDate = alarmDate;
+  isRinging = false;
 
-  // Disable the "Stop Alarm" button and enable the "Set Alarm" button
+  const delay = alarmDate.getTime() - Date.now();
+  alarmTimeoutId = setTimeout(() => {
+    isRinging = true;
+    startSound();
+    document.title = "⏰ Alarm Ringing";
+    setStatus("Alarm is ringing. Stop or snooze it.", "ringing");
+    snoozeAlarmButton.disabled = false;
+  }, Math.max(0, delay));
+
+  stopAlarmButton.disabled = false;
+  setAlarmButton.disabled = true;
+  snoozeAlarmButton.disabled = true;
+  setStatus(`Alarm set for ${formatTime(alarmDate)} • ${formatDate(alarmDate)}`, "active");
+};
+
+const cancelAlarm = (message = "No alarm set.") => {
+  clearTimeout(alarmTimeoutId);
+  alarmTimeoutId = null;
+  nextAlarmDate = null;
+  isRinging = false;
+  stopSound();
+
+  if (!document.hidden) {
+    document.title = "Alarm Clock";
+  }
+
   stopAlarmButton.disabled = true;
+  snoozeAlarmButton.disabled = true;
   setAlarmButton.disabled = false;
+  setStatus(message);
+};
+
+setAlarmButton.addEventListener("click", () => {
+  if (!alarmTimeInput.value) {
+    alert("Please choose an alarm time first.");
+    return;
+  }
+
+  const [hours, minutes] = alarmTimeInput.value.split(":").map(Number);
+  isDaily = dailyModeInput.checked;
+  saveSettings();
+  scheduleAlarm(nextOccurrence(hours, minutes));
 });
 
-//javascript for timetoalarm
-var time = new Date();
-var hours = time.getHours();
-var minutes = time.getMinutes();
+stopAlarmButton.addEventListener("click", () => {
+  if (isRinging && isDaily && alarmTimeInput.value) {
+    stopSound();
+    const [hours, minutes] = alarmTimeInput.value.split(":").map(Number);
+    scheduleAlarm(nextOccurrence(hours, minutes));
+    setStatus("Daily alarm re-armed for the next occurrence.", "active");
+    document.title = "Alarm Clock";
+    return;
+  }
 
+  cancelAlarm("Alarm cancelled.");
+});
 
+snoozeAlarmButton.addEventListener("click", () => {
+  if (!isRinging) {
+    return;
+  }
 
+  stopSound();
+  const snoozeDate = new Date(Date.now() + SNOOZE_MINUTES * 60 * 1000);
+  scheduleAlarm(snoozeDate);
+  setStatus(`Snoozed for ${SNOOZE_MINUTES} minutes.`, "active");
+  document.title = "Alarm Clock";
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!isRinging && !document.hidden) {
+    document.title = "Alarm Clock";
+  }
+});
+
+timezoneElement.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+loadSettings();
+renderClock();
+setInterval(renderClock, 1000);
