@@ -17,7 +17,7 @@
           />
           Alarm Clock Pro
         </h1>
-        <p class="subtitle">Reliable real-time alarms with snooze support.</p>
+        <p class="subtitle">Sehri & Iftar alarms for cities across India.</p>
       </header>
 
       <section class="card" aria-live="polite">
@@ -43,6 +43,21 @@
           </div>
         </div>
 
+        <div class="settings-grid">
+          <div>
+            <label for="citySelect">City / Region</label>
+            <select id="citySelect"></select>
+          </div>
+          <div>
+            <label for="alarmType">Alarm Type</label>
+            <select id="alarmType">
+              <option value="sehri">Sehri</option>
+              <option value="iftar">Iftar</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+        </div>
+
         <label for="alarmTime" id="alarmTimeLabel">Set Alarm Time</label>
         <input type="time" id="alarmTime" />
 
@@ -52,6 +67,7 @@
           <button id="stopAlarm" disabled>Stop Alarm</button>
         </div>
 
+        <p id="city-note" class="city-note"></p>
         <p id="alarm-status" class="alarm-status">No alarm set.</p>
       </section>
     </main>
