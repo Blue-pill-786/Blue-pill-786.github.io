@@ -1,23 +1,57 @@
 const alarmTimeInput = document.getElementById("alarmTime");
-const dailyModeInput = document.getElementById("dailyMode");
+const citySelect = document.getElementById("citySelect");
+const alarmTypeSelect = document.getElementById("alarmType");
 const setAlarmButton = document.getElementById("setAlarm");
-const stopAlarmButton = document.getElementById("stopAlarm");
 const snoozeAlarmButton = document.getElementById("snoozeAlarm");
+const stopAlarmButton = document.getElementById("stopAlarm");
 const currentTimeElement = document.getElementById("current-time");
 const currentDateElement = document.getElementById("current-date");
-const alarmStatusElement = document.getElementById("alarm-status");
-const countdownElement = document.getElementById("countdown");
 const timezoneElement = document.getElementById("timezone");
+const countdownElement = document.getElementById("countdown");
+const todaySehriElement = document.getElementById("today-sehri");
+const sehriRemainingElement = document.getElementById("sehri-remaining");
+const todayIftarElement = document.getElementById("today-iftar");
+const iftarRemainingElement = document.getElementById("iftar-remaining");
+const cityNoteElement = document.getElementById("city-note");
+const alarmStatusElement = document.getElementById("alarm-status");
 
-const STORAGE_KEY = "alarm-clock-settings";
-const SNOOZE_MINUTES = 5;
+const cityPrayerTimes = {
+  delhi: {
+    label: "Delhi / NCR",
+    sehri: ["05:12", "05:05", "04:46", "04:17", "03:50", "03:42", "03:57", "04:22", "04:43", "05:03", "05:28", "05:48"],
+    iftar: ["17:58", "18:18", "18:37", "18:54", "19:07", "19:21", "19:26", "19:12", "18:41", "18:08", "17:42", "17:34"],
+  },
+  mumbai: {
+    label: "Mumbai",
+    sehri: ["05:42", "05:34", "05:17", "04:58", "04:42", "04:39", "04:48", "05:03", "05:17", "05:30", "05:46", "06:01"],
+    iftar: ["18:18", "18:36", "18:48", "18:54", "19:01", "19:12", "19:15", "19:03", "18:37", "18:09", "17:51", "17:55"],
+  },
+  kolkata: {
+    label: "Kolkata",
+    sehri: ["04:59", "04:49", "04:28", "04:00", "03:35", "03:31", "03:45", "04:05", "04:24", "04:43", "05:04", "05:22"],
+    iftar: ["17:08", "17:27", "17:43", "17:56", "18:10", "18:23", "18:26", "18:11", "17:44", "17:16", "16:54", "16:52"],
+  },
+  chennai: {
+    label: "Chennai",
+    sehri: ["05:22", "05:14", "05:00", "04:44", "04:34", "04:35", "04:43", "04:52", "04:56", "05:02", "05:10", "05:20"],
+    iftar: ["18:03", "18:17", "18:24", "18:27", "18:31", "18:39", "18:42", "18:35", "18:16", "17:53", "17:43", "17:47"],
+  },
+  hyderabad: {
+    label: "Hyderabad",
+    sehri: ["05:30", "05:21", "05:04", "04:43", "04:27", "04:25", "04:35", "04:50", "05:01", "05:14", "05:28", "05:42"],
+    iftar: ["17:58", "18:14", "18:25", "18:32", "18:40", "18:50", "18:53", "18:43", "18:20", "17:54", "17:41", "17:42"],
+  },
+  srinagar: {
+    label: "Srinagar",
+    sehri: ["05:45", "05:33", "05:09", "04:29", "03:49", "03:21", "03:24", "03:56", "04:23", "04:50", "05:20", "05:42"],
+    iftar: ["17:41", "18:02", "18:25", "18:50", "19:14", "19:34", "19:30", "19:03", "18:26", "17:45", "17:21", "17:17"],
+  },
+};
 
 let alarmTimeoutId = null;
-let nextAlarmDate = null;
-let isDaily = false;
-let isRinging = false;
-let oscillator = null;
-let audioContext = null;
+let ringIntervalId = null;
+let nextAlarm = null;
+let audioCtx = null;
 
 const twoDigits = (value) => String(value).padStart(2, "0");
 
@@ -27,199 +61,200 @@ const formatTime = (date) => {
   const seconds = twoDigits(date.getSeconds());
   const zone = hours >= 12 ? "PM" : "AM";
   hours = hours % 12 || 12;
-
   return `${hours}:${minutes}:${seconds} ${zone}`;
 };
 
 const formatDate = (date) =>
   date.toLocaleDateString(undefined, {
     weekday: "long",
-    month: "short",
+    month: "long",
     day: "numeric",
     year: "numeric",
   });
 
-const formatDuration = (milliseconds) => {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+const formatCountdown = (ms) => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-
   return `${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}`;
+};
+
+const parseTodayTime = (timeValue) => {
+  const [hours, minutes] = timeValue.split(":").map(Number);
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+};
+
+const getRemainingLabel = (targetDate) => {
+  const diff = targetDate.getTime() - Date.now();
+  if (diff <= 0) {
+    return "Time passed for today";
+  }
+  return `${formatCountdown(diff)} remaining`;
 };
 
 const setStatus = (message, mode = "") => {
   alarmStatusElement.textContent = message;
-  alarmStatusElement.classList.remove("active", "ringing");
-  if (mode) {
-    alarmStatusElement.classList.add(mode);
-  }
+  alarmStatusElement.classList.toggle("active", mode === "active");
+  alarmStatusElement.classList.toggle("ringing", mode === "ringing");
 };
 
-const saveSettings = () => {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      alarmTime: alarmTimeInput.value,
-      dailyMode: dailyModeInput.checked,
-    })
-  );
-};
+const updateTodayPrayerInfo = () => {
+  const month = new Date().getMonth();
+  const cityData = cityPrayerTimes[citySelect.value];
+  const sehriTime = cityData.sehri[month];
+  const iftarTime = cityData.iftar[month];
 
-const loadSettings = () => {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return;
-  }
+  todaySehriElement.textContent = sehriTime;
+  todayIftarElement.textContent = iftarTime;
 
-  try {
-    const parsed = JSON.parse(raw);
-    alarmTimeInput.value = parsed.alarmTime || "";
-    dailyModeInput.checked = Boolean(parsed.dailyMode);
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-  }
+  sehriRemainingElement.textContent = getRemainingLabel(parseTodayTime(sehriTime));
+  iftarRemainingElement.textContent = getRemainingLabel(parseTodayTime(iftarTime));
 };
 
 const renderClock = () => {
   const now = new Date();
   currentTimeElement.textContent = formatTime(now);
   currentDateElement.textContent = formatDate(now);
+  timezoneElement.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  if (nextAlarmDate) {
-    countdownElement.textContent = formatDuration(nextAlarmDate - now);
+  if (nextAlarm) {
+    countdownElement.textContent = formatCountdown(nextAlarm.getTime() - now.getTime());
   } else {
-    countdownElement.textContent = "No active alarm";
+    countdownElement.textContent = "--";
   }
+
+  updateTodayPrayerInfo();
 };
 
-const stopSound = () => {
-  if (oscillator) {
-    oscillator.stop();
-    oscillator.disconnect();
-    oscillator = null;
+const beepPattern = () => {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      return;
+    }
+    audioCtx = new AudioContextClass();
   }
+
+  const now = audioCtx.currentTime;
+  [0, 0.24, 0.48].forEach((offset) => {
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 850;
+    gainNode.gain.setValueAtTime(0.0001, now + offset);
+    gainNode.gain.exponentialRampToValueAtTime(0.2, now + offset + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start(now + offset);
+    oscillator.stop(now + offset + 0.18);
+  });
 };
 
-const startSound = () => {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-
-  if (audioContext.state === "suspended") {
-    audioContext.resume();
-  }
-
-  oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  oscillator.type = "square";
-  oscillator.frequency.value = 880;
-  gain.gain.value = 0.05;
-  oscillator.connect(gain);
-  gain.connect(audioContext.destination);
-  oscillator.start();
-};
-
-const nextOccurrence = (hours, minutes) => {
-  const now = new Date();
-  const next = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    hours,
-    minutes,
-    0,
-    0
-  );
-
-  if (next <= now) {
-    next.setDate(next.getDate() + 1);
-  }
-
-  return next;
-};
-
-const scheduleAlarm = (alarmDate) => {
+const stopAllTimers = () => {
   clearTimeout(alarmTimeoutId);
-  nextAlarmDate = alarmDate;
-  isRinging = false;
+  clearInterval(ringIntervalId);
+  alarmTimeoutId = null;
+  ringIntervalId = null;
+};
 
-  const delay = alarmDate.getTime() - Date.now();
-  alarmTimeoutId = setTimeout(() => {
-    isRinging = true;
-    startSound();
-    document.title = "⏰ Alarm Ringing";
-    setStatus("Alarm is ringing. Stop or snooze it.", "ringing");
-    snoozeAlarmButton.disabled = false;
-  }, Math.max(0, delay));
+const stopAlarm = () => {
+  stopAllTimers();
+  nextAlarm = null;
+  setAlarmButton.disabled = false;
+  snoozeAlarmButton.disabled = true;
+  stopAlarmButton.disabled = true;
+  document.title = "Alarm Clock Pro";
+  setStatus("No alarm set.");
+  renderClock();
+};
 
+const beginRinging = () => {
+  setStatus("Alarm ringing now. Snooze or stop.", "ringing");
+  snoozeAlarmButton.disabled = false;
   stopAlarmButton.disabled = false;
+
+  const ring = () => {
+    beepPattern();
+    document.title = document.title === "⏰ Alarm ringing" ? "Alarm Clock Pro" : "⏰ Alarm ringing";
+  };
+
+  ring();
+  ringIntervalId = setInterval(ring, 1200);
+};
+
+const scheduleAlarmAt = (targetDate, label) => {
+  stopAllTimers();
+  nextAlarm = targetDate;
+
+  alarmTimeoutId = setTimeout(beginRinging, Math.max(0, targetDate.getTime() - Date.now()));
   setAlarmButton.disabled = true;
   snoozeAlarmButton.disabled = true;
-  setStatus(`Alarm set for ${formatTime(alarmDate)} • ${formatDate(alarmDate)}`, "active");
+  stopAlarmButton.disabled = false;
+  setStatus(`${label} alarm set for ${formatTime(targetDate)} on ${formatDate(targetDate)}.`, "active");
+  renderClock();
 };
 
-const cancelAlarm = (message = "No alarm set.") => {
-  clearTimeout(alarmTimeoutId);
-  alarmTimeoutId = null;
-  nextAlarmDate = null;
-  isRinging = false;
-  stopSound();
+const updatePresetTime = () => {
+  const type = alarmTypeSelect.value;
+  const cityKey = citySelect.value;
+  const month = new Date().getMonth();
 
-  if (!document.hidden) {
-    document.title = "Alarm Clock";
+  if (type === "custom") {
+    alarmTimeInput.disabled = false;
+    cityNoteElement.textContent = "Custom mode: choose any time manually.";
+    return;
   }
 
-  stopAlarmButton.disabled = true;
-  snoozeAlarmButton.disabled = true;
-  setAlarmButton.disabled = false;
-  setStatus(message);
+  const cityData = cityPrayerTimes[cityKey];
+  const timeValue = cityData[type][month];
+  alarmTimeInput.value = timeValue;
+  alarmTimeInput.disabled = true;
+  cityNoteElement.textContent = `Using approximate ${type} time for ${cityData.label} in ${new Date().toLocaleString(undefined, { month: "long" })}.`;
 };
 
 setAlarmButton.addEventListener("click", () => {
-  if (!alarmTimeInput.value) {
+  const alarmTime = alarmTimeInput.value;
+  if (!alarmTime) {
     alert("Please choose an alarm time first.");
     return;
   }
 
-  const [hours, minutes] = alarmTimeInput.value.split(":").map(Number);
-  isDaily = dailyModeInput.checked;
-  saveSettings();
-  scheduleAlarm(nextOccurrence(hours, minutes));
-});
-
-stopAlarmButton.addEventListener("click", () => {
-  if (isRinging && isDaily && alarmTimeInput.value) {
-    stopSound();
-    const [hours, minutes] = alarmTimeInput.value.split(":").map(Number);
-    scheduleAlarm(nextOccurrence(hours, minutes));
-    setStatus("Daily alarm re-armed for the next occurrence.", "active");
-    document.title = "Alarm Clock";
-    return;
+  const now = new Date();
+  const [hours, minutes] = alarmTime.split(":").map(Number);
+  const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+  if (targetDate <= now) {
+    targetDate.setDate(targetDate.getDate() + 1);
   }
 
-  cancelAlarm("Alarm cancelled.");
+  const mode = alarmTypeSelect.value;
+  const cityLabel = cityPrayerTimes[citySelect.value].label;
+  const alarmLabel = mode === "custom" ? "Custom" : `${mode === "sehri" ? "Sehri" : "Iftar"} (${cityLabel})`;
+  scheduleAlarmAt(targetDate, alarmLabel);
 });
 
 snoozeAlarmButton.addEventListener("click", () => {
-  if (!isRinging) {
-    return;
-  }
-
-  stopSound();
-  const snoozeDate = new Date(Date.now() + SNOOZE_MINUTES * 60 * 1000);
-  scheduleAlarm(snoozeDate);
-  setStatus(`Snoozed for ${SNOOZE_MINUTES} minutes.`, "active");
-  document.title = "Alarm Clock";
+  scheduleAlarmAt(new Date(Date.now() + 5 * 60 * 1000), "Snooze");
 });
 
-document.addEventListener("visibilitychange", () => {
-  if (!isRinging && !document.hidden) {
-    document.title = "Alarm Clock";
-  }
+stopAlarmButton.addEventListener("click", stopAlarm);
+citySelect.addEventListener("change", () => {
+  updatePresetTime();
+  updateTodayPrayerInfo();
+});
+alarmTypeSelect.addEventListener("change", updatePresetTime);
+
+Object.entries(cityPrayerTimes).forEach(([key, data]) => {
+  const option = document.createElement("option");
+  option.value = key;
+  option.textContent = data.label;
+  citySelect.appendChild(option);
 });
 
-timezoneElement.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
-loadSettings();
+citySelect.value = "delhi";
+updatePresetTime();
+updateTodayPrayerInfo();
 renderClock();
 setInterval(renderClock, 1000);
