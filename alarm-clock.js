@@ -14,6 +14,7 @@ const todayIftarElement = document.getElementById("today-iftar");
 const iftarRemainingElement = document.getElementById("iftar-remaining");
 const cityNoteElement = document.getElementById("city-note");
 const alarmStatusElement = document.getElementById("alarm-status");
+const locationStatusElement = document.getElementById("location-status");
 
 const cityPrayerTimes = {
   delhi: {
@@ -52,6 +53,7 @@ let alarmTimeoutId = null;
 let ringIntervalId = null;
 let nextAlarm = null;
 let audioCtx = null;
+let currentLocation = null;
 
 const twoDigits = (value) => String(value).padStart(2, "0");
 
@@ -128,6 +130,103 @@ const renderClock = () => {
   updateTodayPrayerInfo();
 };
 
+
+const locationStorageKey = "alarmClockLocationSession";
+
+const saveLocationSession = (payload) => {
+  localStorage.setItem(locationStorageKey, JSON.stringify(payload));
+};
+
+const loadLocationSession = () => {
+  try {
+    const storedValue = localStorage.getItem(locationStorageKey);
+    return storedValue ? JSON.parse(storedValue) : null;
+  } catch (_error) {
+    return null;
+  }
+};
+
+const renderLocationStatus = (payload) => {
+  if (!payload) {
+    locationStatusElement.textContent = "Location access not enabled.";
+    return;
+  }
+
+  locationStatusElement.textContent = `Device location: ${payload.latitude.toFixed(4)}, ${payload.longitude.toFixed(4)} (saved ${new Date(payload.savedAt).toLocaleTimeString()}).`;
+};
+
+const requestNotificationPermission = async () => {
+  if (!("Notification" in window)) {
+    return "unsupported";
+  }
+
+  if (Notification.permission === "granted") {
+    return "granted";
+  }
+
+  if (Notification.permission === "denied") {
+    return "denied";
+  }
+
+  return Notification.requestPermission();
+};
+
+const sendAlarmNotification = () => {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+
+  const locationSnippet = currentLocation
+    ? `\nLocation: ${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`
+    : "";
+
+  new Notification("Alarm Clock Pro", {
+    body: `Alarm is ringing on this device.${locationSnippet}`,
+    tag: "alarm-clock-pro-ring",
+    renotify: true,
+  });
+};
+
+const triggerDeviceAlert = () => {
+  if ("vibrate" in navigator) {
+    navigator.vibrate([280, 120, 280, 120, 280]);
+  }
+};
+
+const requestLocationAndPersist = () => {
+  const savedLocation = loadLocationSession();
+  if (savedLocation) {
+    currentLocation = savedLocation;
+    renderLocationStatus(savedLocation);
+  }
+
+  if (!("geolocation" in navigator)) {
+    locationStatusElement.textContent = "Geolocation is not supported in this browser.";
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const payload = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        savedAt: Date.now(),
+      };
+
+      currentLocation = payload;
+      saveLocationSession(payload);
+      renderLocationStatus(payload);
+    },
+    () => {
+      if (!savedLocation) {
+        locationStatusElement.textContent = "Location permission denied. Please enable it from browser settings.";
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 300000, timeout: 10000 }
+  );
+};
+
 const beepPattern = () => {
   if (!audioCtx) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -173,6 +272,8 @@ const stopAlarm = () => {
 
 const beginRinging = () => {
   setStatus("Alarm ringing now. Snooze or stop.", "ringing");
+  sendAlarmNotification();
+  triggerDeviceAlert();
   snoozeAlarmButton.disabled = false;
   stopAlarmButton.disabled = false;
 
@@ -254,6 +355,8 @@ Object.entries(cityPrayerTimes).forEach(([key, data]) => {
 });
 
 citySelect.value = "delhi";
+requestLocationAndPersist();
+requestNotificationPermission();
 updatePresetTime();
 updateTodayPrayerInfo();
 renderClock();

@@ -132,6 +132,13 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   font-size: 0.9rem;
 }
 
+.location-status {
+  margin: 0.55rem 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.87rem;
+}
+
 .alarm-status { margin: 0.7rem 0 0; text-align: center; font-weight: 700; color: var(--muted); }
 .alarm-status.active { color: var(--primary-dark); }
 .alarm-status.ringing { color: var(--danger); }
