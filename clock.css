@@ -1,103 +1,147 @@
-body{
-   
-    /* background-image: url(https://png.pngtree.com/background/20210715/original/pngtree-blue-geometric-alarm-clock-background-picture-image_1284646.jpg); */
-    margin: auto;
-  width: 70%;
-  /* border: 3px solid green; */
-  padding: 10px;
-  height: 70%;
-  border-radius: 40px;
-  
+:root {
+  --bg-1: #0f172a;
+  --bg-2: #172554;
+  --card: #ffffff;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --danger: #dc2626;
+  --warning: #f59e0b;
+  --text: #0f172a;
+  --muted: #475569;
+  --line: #dbe3f2;
 }
 
-.title{
-    margin: auto;
-    text-align: center;
-    width: 40%;
-    /* border: 3px solid green; */
-    border-radius: 30px;
-    margin-top: 10px;
-    margin-bottom: 10px;
-    padding: 10px;
-    background-image: linear-gradient(to right, white , yellow, red);
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at top, #1e3a8a, var(--bg-1) 60%),
+    linear-gradient(135deg, var(--bg-1), var(--bg-2));
+  padding: 1rem;
 }
 
-.outer{
-    margin: auto;
-    width: 70%;
-    height: 500px;
-    /* border: 3px solid green; */
-    padding: 10px;
-    border-radius: 30px;
-    background-image: linear-gradient(to bottom, pink, yellow, white);
-}
-#alarmTime{
-    margin: auto;
-    background-image: linear-gradient(to right, rgb(13, 231, 122) , yellow);
-    width: 50%;
-    border-radius: 20px;
-    border: 3px double black;
-    padding: 10px;
-    margin-left: 28%;
-    margin-top: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-    align-content: center;
-}
-#alarmTimeLabel{
-    display: block;
-    font-family: Georgia, 'Times New Roman', Times, serif;
-    font-weight: 700;
-    text-align: center;
-    margin: auto;
-    margin-top: 30px;
-    margin-left: 28%;
-    width: 50%;
-    border-radius: 20px;
-    /* border: 3px solid blue; */
-    padding: 10px;
+.app { width: min(700px, 100%); }
+.app-header { text-align: center; margin-bottom: 1rem; }
 
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  border-radius: 16px;
+  padding: 0.7rem 1rem;
+  margin: 0;
 }
 
-#setAlarm{
-    margin: auto;
-    margin-top: 50px;
-    width: 40%;
-    margin-left: 35%;
-    /* border: 3px solid green; */
-    padding: 10px;
-    border-radius: 20px;
-    background-image: linear-gradient(to right, rgb(30, 243, 232) , yellow);
-   
-}
-#stopAlarm{
-    background-image: linear-gradient(to right, YELLOW, rgb(30, 243, 232) );
-    margin: auto;
-    margin-top: 30px;
-    margin-left: 35%;
-    width: 40%;
-    border: 2px solid black;
-    padding: 10px;
-    border-radius: 20px;
+.subtitle { color: #cbd5e1; margin: 0.65rem 0 0; font-size: 0.96rem; }
+
+.card {
+  background: var(--card);
+  border-radius: 22px;
+  padding: 1.4rem;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.35);
 }
 
-#current-time{
-    font-size: larger;
-    font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
-    font-weight: 700;
-    font-style: oblique;
-    margin: auto;
-    margin-top: 10px;
-    margin-left: 45%;
-    width: 40%;
-    /* border: 3px solid green; */
-    padding: 10px;
-    border-radius: 20px;
-
+.clock-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
 }
-.time{
-    margin: auto;
-    margin-top: 10px;
-    margin-left: 50%;
-    width: 40%;
+
+.current-time {
+  text-align: center;
+  font-size: clamp(2rem, 8vw, 3.2rem);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  margin: 0.5rem 0 0;
+}
+
+.current-date { text-align: center; color: var(--muted); margin: 0.4rem 0 1rem; }
+
+.meta-grid,
+.prayer-grid,
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+  margin: 0 0 1rem;
+}
+
+.meta-item,
+.prayer-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.meta-label { color: var(--muted); font-size: 0.82rem; }
+.meta-value { font-weight: 700; }
+.remaining-value { color: var(--primary-dark); font-weight: 600; font-size: 0.9rem; }
+
+label { display: block; font-weight: 650; margin-bottom: 0.45rem; }
+
+#alarmTime,
+select {
+  width: 100%;
+  padding: 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #b8c8e8;
+  font-size: 1rem;
+  background: #fff;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+button {
+  border: 0;
+  border-radius: 12px;
+  padding: 0.72rem 0.6rem;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#setAlarm { background: var(--primary); }
+#setAlarm:hover { background: var(--primary-dark); }
+#snoozeAlarm { background: var(--warning); }
+#stopAlarm { background: var(--danger); }
+
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.city-note {
+  margin: 0.9rem 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.alarm-status { margin: 0.7rem 0 0; text-align: center; font-weight: 700; color: var(--muted); }
+.alarm-status.active { color: var(--primary-dark); }
+.alarm-status.ringing { color: var(--danger); }
+
+@media (max-width: 640px) {
+  .meta-grid,
+  .prayer-grid,
+  .settings-grid,
+  .button-row {
+    grid-template-columns: 1fr;
+  }
 }
