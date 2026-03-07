@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111827" />
     <title>Alarm Clock Pro</title>
     <link rel="stylesheet" href="clock.css" />
   </head>
@@ -10,23 +11,15 @@
     <main class="app">
       <header class="app-header">
         <h1 class="title">
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/2997/2997985.png"
-            alt="Alarm icon"
-            height="30"
-          />
+          <span class="icon-chip" aria-hidden="true">⏰</span>
           Alarm Clock Pro
         </h1>
-        <p class="subtitle">Sehri & Iftar alarms for cities across India.</p>
+        <p class="subtitle">Sehri &amp; Iftar alarms for cities across India.</p>
       </header>
 
       <section class="card" aria-live="polite">
         <p class="clock-label">
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/2972/2972531.png"
-            alt="Clock icon"
-            height="16"
-          />
+          <span class="inline-icon" aria-hidden="true">🕒</span>
           Local Time
         </p>
         <p id="current-time" class="current-time">--:--:--</p>
@@ -58,11 +51,11 @@
 
         <div class="settings-grid">
           <div>
-            <label for="citySelect">City / Region</label>
+            <label for="citySelect">🏙️ City / Region</label>
             <select id="citySelect"></select>
           </div>
           <div>
-            <label for="alarmType">Alarm Type</label>
+            <label for="alarmType">🔔 Alarm Type</label>
             <select id="alarmType">
               <option value="sehri">Sehri</option>
               <option value="iftar">Iftar</option>
@@ -71,13 +64,13 @@
           </div>
         </div>
 
-        <label for="alarmTime" id="alarmTimeLabel">Set Alarm Time</label>
+        <label for="alarmTime" id="alarmTimeLabel">🗓️ Set Alarm Time</label>
         <input type="time" id="alarmTime" />
 
         <div class="button-row">
-          <button id="setAlarm">Set Alarm</button>
-          <button id="snoozeAlarm" disabled>Snooze 5 min</button>
-          <button id="stopAlarm" disabled>Stop Alarm</button>
+          <button id="setAlarm">✅ Set Alarm</button>
+          <button id="snoozeAlarm" disabled>😴 Snooze 5 min</button>
+          <button id="stopAlarm" disabled>🛑 Stop Alarm</button>
         </div>
 
         <p id="city-note" class="city-note"></p>
