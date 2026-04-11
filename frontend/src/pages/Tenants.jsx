@@ -24,15 +24,17 @@ const Tenants = () => {
         </thead>
 
         <tbody>
-          {tenants.map(t => (
-            <tr key={t._id} className="border-t border-slate-800">
-              <td>{t.user?.name}</td>
-              <td>{t.user?.email}</td>
-              <td>{t.roomNumber}</td>
-              <td>{t.bedLabel}</td>
-              <td>₹{t.monthlyRent}</td>
-            </tr>
-          ))}
+          {tenants
+            .filter((t) => t.user)
+            .map((t) => (
+              <tr key={t._id} className="border-t border-slate-800">
+                <td>{t.user.name}</td>
+                <td>{t.user.email}</td>
+                <td>{t.roomNumber || '-'}</td>
+                <td>{t.bedLabel || '-'}</td>
+                <td>₹{t.monthlyRent ?? '-'}</td>
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>

@@ -14,54 +14,111 @@ const AddProperty = () => {
   });
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   /* ================= FLOOR ================= */
 
   const addFloor = () => {
-    setForm({
-      ...form,
-      floors: [...form.floors, { name: "", rooms: [] }]
-    });
+    setForm((prev) => ({
+      ...prev,
+      floors: [...prev.floors, { name: "", rooms: [] }]
+    }));
   };
 
-  const updateFloor = (i, value) => {
-    const floors = [...form.floors];
-    floors[i].name = value;
-    setForm({ ...form, floors });
+  const updateFloor = (index, value) => {
+    setForm((prev) => ({
+      ...prev,
+      floors: prev.floors.map((floor, idx) =>
+        idx === index ? { ...floor, name: value } : floor
+      )
+    }));
   };
 
   /* ================= ROOM ================= */
 
   const addRoom = (floorIndex) => {
-    const floors = [...form.floors];
-    floors[floorIndex].rooms.push({ number: "", beds: [] });
-    setForm({ ...form, floors });
+    setForm((prev) => ({
+      ...prev,
+      floors: prev.floors.map((floor, idx) =>
+        idx !== floorIndex
+          ? floor
+          : {
+              ...floor,
+              rooms: [...floor.rooms, { number: "", beds: [] }]
+            }
+      )
+    }));
   };
 
   const updateRoom = (floorIndex, roomIndex, value) => {
-    const floors = [...form.floors];
-    floors[floorIndex].rooms[roomIndex].number = value;
-    setForm({ ...form, floors });
+    setForm((prev) => ({
+      ...prev,
+      floors: prev.floors.map((floor, idx) =>
+        idx !== floorIndex
+          ? floor
+          : {
+              ...floor,
+              rooms: floor.rooms.map((room, rIdx) =>
+                rIdx === roomIndex ? { ...room, number: value } : room
+              )
+            }
+      )
+    }));
   };
 
   /* ================= BED ================= */
 
   const addBed = (floorIndex, roomIndex) => {
-    const floors = [...form.floors];
-    floors[floorIndex].rooms[roomIndex].beds.push({
-      label: "",
-      monthlyRent: 0,
-      status: "vacant"
-    });
-    setForm({ ...form, floors });
+    setForm((prev) => ({
+      ...prev,
+      floors: prev.floors.map((floor, idx) =>
+        idx !== floorIndex
+          ? floor
+          : {
+              ...floor,
+              rooms: floor.rooms.map((room, rIdx) =>
+                rIdx !== roomIndex
+                  ? room
+                  : {
+                      ...room,
+                      beds: [
+                        ...room.beds,
+                        { label: "", monthlyRent: 0, status: "vacant" }
+                      ]
+                    }
+              )
+            }
+      )
+    }));
   };
 
   const updateBed = (floorIndex, roomIndex, bedIndex, key, value) => {
-    const floors = [...form.floors];
-    floors[floorIndex].rooms[roomIndex].beds[bedIndex][key] = value;
-    setForm({ ...form, floors });
+    setForm((prev) => ({
+      ...prev,
+      floors: prev.floors.map((floor, fIdx) =>
+        fIdx !== floorIndex
+          ? floor
+          : {
+              ...floor,
+              rooms: floor.rooms.map((room, rIdx) =>
+                rIdx !== roomIndex
+                  ? room
+                  : {
+                      ...room,
+                      beds: room.beds.map((bed, bIdx) =>
+                        bIdx !== bedIndex
+                          ? bed
+                          : {
+                              ...bed,
+                              [key]: key === "monthlyRent" ? Number(value) : value
+                            }
+                      )
+                    }
+              )
+            }
+      )
+    }));
   };
 
   /* ================= SUBMIT ================= */
@@ -69,13 +126,28 @@ const AddProperty = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const hasInvalidFloor = form.floors.some(
+      (floor) =>
+        !floor.name.trim() ||
+        floor.rooms.some(
+          (room) =>
+            !room.number.trim() ||
+            room.beds.some((bed) => !bed.label.trim())
+        )
+    );
+
+    if (hasInvalidFloor) {
+      return alert('Please fill in all floor, room, and bed labels before submitting.');
+    }
+
     try {
       await api.post("/admin/properties", form);
       alert("Property created successfully");
       navigate("/properties");
     } catch (err) {
-      console.error(err);
-      alert("Failed to create property");
+      console.error("Error:", err);
+      const message = err.response?.data?.message || 'Failed to create property';
+      alert(message);
     }
   };
 
@@ -87,10 +159,38 @@ const AddProperty = () => {
       <form onSubmit={handleSubmit} className="space-y-4">
 
         {/* BASIC INFO */}
-        <input name="name" placeholder="Property Name" onChange={handleChange} className="w-full p-2 bg-slate-800" />
-        <input name="code" placeholder="Property Code" onChange={handleChange} className="w-full p-2 bg-slate-800" />
-        <input name="city" placeholder="City" onChange={handleChange} className="w-full p-2 bg-slate-800" />
-        <input name="address" placeholder="Address" onChange={handleChange} className="w-full p-2 bg-slate-800" />
+        <input
+          name="name"
+          value={form.name}
+          placeholder="Property Name"
+          onChange={handleChange}
+          className="w-full p-2 bg-slate-800"
+          required
+        />
+        <input
+          name="code"
+          value={form.code}
+          placeholder="Property Code"
+          onChange={handleChange}
+          className="w-full p-2 bg-slate-800"
+          required
+        />
+        <input
+          name="city"
+          value={form.city}
+          placeholder="City"
+          onChange={handleChange}
+          className="w-full p-2 bg-slate-800"
+          required
+        />
+        <input
+          name="address"
+          value={form.address}
+          placeholder="Address"
+          onChange={handleChange}
+          className="w-full p-2 bg-slate-800"
+          required
+        />
 
         {/* FLOORS */}
         <div>

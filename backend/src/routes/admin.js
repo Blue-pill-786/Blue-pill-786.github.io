@@ -1,10 +1,12 @@
 import express from 'express';
 import dayjs from 'dayjs';
+import { protect, authorize } from '../middleware/auth.js';
 import { Property } from '../models/Property.js';
 import { Tenant } from '../models/Tenant.js';
 import { User } from '../models/User.js';
 
 const router = express.Router();
+router.use(protect, authorize('admin', 'manager', 'staff'));
 
 /* ================= DASHBOARD ================= */
 
@@ -62,12 +64,49 @@ router.get('/properties', async (req, res) => {
 
 /* ================= CREATE PROPERTY ================= */
 
+const isValidFloors = (floors) => {
+  if (!Array.isArray(floors)) return true;
+  return floors.every((floor) =>
+    floor?.name?.toString().trim() &&
+    Array.isArray(floor.rooms) &&
+    floor.rooms.every((room) =>
+      room?.number?.toString().trim() &&
+      Array.isArray(room.beds) &&
+      room.beds.every((bed) => bed?.label?.toString().trim())
+    )
+  );
+};
+
 router.post('/properties', async (req, res) => {
   try {
-    const property = await Property.create(req.body);
+    const { name, code, city, address, floors } = req.body;
+
+    if (!name?.toString().trim() || !code?.toString().trim() || !city?.toString().trim() || !address?.toString().trim()) {
+      return res.status(400).json({ message: 'Missing required property fields' });
+    }
+
+    if (!isValidFloors(floors)) {
+      return res.status(400).json({ message: 'Floor, room, and bed labels are required' });
+    }
+
+    const property = await Property.create({
+      name: name.toString().trim(),
+      code: code.toString().trim(),
+      city: city.toString().trim(),
+      address: address.toString().trim(),
+      floors: Array.isArray(floors) ? floors : []
+    });
+
     res.status(201).json(property);
-  } catch {
-    res.status(500).json({ message: "Error creating property" });
+  } catch (err) {
+    console.error('CREATE PROPERTY ERROR:', err);
+    if (err.code === 11000) {
+      return res.status(409).json({ message: 'Property code must be unique' });
+    }
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ message: err.message, errors: err.errors });
+    }
+    res.status(500).json({ message: err.message || 'Error creating property' });
   }
 });
 
@@ -94,7 +133,7 @@ router.get('/properties/:id', async (req, res) => {
 
 router.get('/tenants', async (req, res) => {
   try {
-    const tenants = await Tenant.find({ status: 'active' })
+    const tenants = await Tenant.find({ status: 'active', user: { $exists: true, $ne: null } })
       .populate('user', 'name email');
 
     res.json(tenants);
