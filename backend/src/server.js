@@ -10,7 +10,9 @@ import paymentRoutes from './routes/payments.js';
 import { initCronJobs } from './jobs/cron.js';
 
 const app = express();
-
+app.use(cors({
+  origin: "http://localhost:5174"
+}));
 app.use(helmet());
 app.use(cors({ origin: env.frontendUrl, credentials: true }));
 app.use(express.json());
@@ -29,7 +31,7 @@ app.use((err, _req, res, _next) => {
 
 const start = async () => {
   await connectDB();
-  initCronJobs();
+  // initCronJobs();
   app.listen(env.port, () => {
     // eslint-disable-next-line no-console
     console.log(`Backend running on port ${env.port}`);

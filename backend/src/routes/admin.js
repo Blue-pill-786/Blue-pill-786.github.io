@@ -1,152 +1,317 @@
 import express from 'express';
 import dayjs from 'dayjs';
-import { body, validationResult } from 'express-validator';
-import { authorize, protect } from '../middleware/auth.js';
 import { Property } from '../models/Property.js';
 import { Tenant } from '../models/Tenant.js';
 import { User } from '../models/User.js';
-import { Invoice } from '../models/Invoice.js';
-import { Expense } from '../models/Expense.js';
-import { generateMonthlyRent } from '../services/rentScheduler.js';
 
 const router = express.Router();
-router.use(protect, authorize('admin', 'manager', 'staff'));
+
+/* ================= DASHBOARD ================= */
 
 router.get('/dashboard', async (_req, res) => {
-  const [totalTenants, totalProperties, pendingInvoices, occupiedAgg, monthlyRevenue] = await Promise.all([
-    Tenant.countDocuments({ status: 'active' }),
-    Property.countDocuments({ isActive: true }),
-    Invoice.countDocuments({ status: { $in: ['pending', 'overdue'] } }),
-    Property.aggregate([
-      { $unwind: '$floors' },
-      { $unwind: '$floors.rooms' },
-      { $unwind: '$floors.rooms.beds' },
-      {
-        $group: {
-          _id: null,
-          totalBeds: { $sum: 1 },
-          occupiedBeds: {
-            $sum: { $cond: [{ $eq: ['$floors.rooms.beds.status', 'occupied'] }, 1, 0] }
+  try {
+    const [totalTenants, totalProperties, occupiedAgg] = await Promise.all([
+      Tenant.countDocuments({ status: 'active' }),
+      Property.countDocuments({ isActive: true }),
+      Property.aggregate([
+        { $unwind: '$floors' },
+        { $unwind: '$floors.rooms' },
+        { $unwind: '$floors.rooms.beds' },
+        {
+          $group: {
+            _id: null,
+            totalBeds: { $sum: 1 },
+            occupiedBeds: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$floors.rooms.beds.status', 'occupied'] },
+                  1,
+                  0
+                ]
+              }
+            }
           }
         }
-      }
-    ]),
-    Invoice.aggregate([
-      {
-        $match: {
-          status: 'paid',
-          paidAt: {
-            $gte: dayjs().startOf('month').toDate(),
-            $lte: dayjs().endOf('month').toDate()
-          }
-        }
-      },
-      { $group: { _id: null, total: { $sum: '$totalAmount' } } }
-    ])
-  ]);
+      ])
+    ]);
 
-  const bedStats = occupiedAgg[0] || { totalBeds: 0, occupiedBeds: 0 };
-  res.json({
-    totalTenants,
-    totalProperties,
-    pendingInvoices,
-    occupiedBeds: bedStats.occupiedBeds,
-    vacantBeds: bedStats.totalBeds - bedStats.occupiedBeds,
-    monthlyRevenue: monthlyRevenue[0]?.total || 0
-  });
+    const bedStats = occupiedAgg[0] || { totalBeds: 0, occupiedBeds: 0 };
+
+    res.json({
+      totalTenants,
+      totalProperties,
+      occupiedBeds: bedStats.occupiedBeds,
+      vacantBeds: bedStats.totalBeds - bedStats.occupiedBeds
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: "Dashboard error" });
+  }
 });
 
-router.post('/properties', [body('name').notEmpty(), body('code').notEmpty(), body('address').notEmpty(), body('city').notEmpty()], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
-  const property = await Property.create(req.body);
-  return res.status(201).json(property);
+/* ================= GET ALL PROPERTIES ================= */
+
+router.get('/properties', async (req, res) => {
+  try {
+    const properties = await Property.find();
+    res.json(properties);
+  } catch {
+    res.status(500).json({ message: "Error fetching properties" });
+  }
 });
 
-router.get('/properties', async (_req, res) => {
-  const properties = await Property.find().populate('manager', 'name email');
-  return res.json(properties);
+/* ================= CREATE PROPERTY ================= */
+
+router.post('/properties', async (req, res) => {
+  try {
+    const property = await Property.create(req.body);
+    res.status(201).json(property);
+  } catch {
+    res.status(500).json({ message: "Error creating property" });
+  }
 });
+
+/* ================= GET PROPERTY ================= */
+
+router.get('/properties/:id', async (req, res) => {
+  try {
+    const property = await Property.findById(req.params.id)
+      .populate({
+        path: 'floors.rooms.beds.occupiedBy',
+        populate: { path: 'user', select: 'name email' }
+      });
+
+    if (!property) return res.status(404).json({ message: "Not found" });
+
+    res.json(property);
+
+  } catch {
+    res.status(500).json({ message: "Error fetching property" });
+  }
+});
+
+/* ================= GET TENANTS ================= */
+
+router.get('/tenants', async (req, res) => {
+  try {
+    const tenants = await Tenant.find({ status: 'active' })
+      .populate('user', 'name email');
+
+    res.json(tenants);
+
+  } catch (err) {
+    console.error("TENANTS ERROR:", err);
+    res.status(500).json({ message: "Error fetching tenants" });
+  }
+});
+
+/* ================= CREATE TENANT ================= */
 
 router.post('/tenants', async (req, res) => {
-  const { name, email, phone, propertyId, floorName, roomNumber, bedLabel, monthlyRent, dueDayOfMonth, lateFeePerDay } = req.body;
+  try {
+    const {
+      name,
+      email,
+      phone,
+      propertyId,
+      floorName,
+      roomNumber,
+      bedLabel,
+      monthlyRent
+    } = req.body;
 
-  const user = await User.create({ name, email, phone, password: 'Temp@123456', role: 'tenant' });
-  const tenant = await Tenant.create({
-    user: user._id,
-    property: propertyId,
-    floorName,
-    roomNumber,
-    bedLabel,
-    monthlyRent,
-    dueDayOfMonth,
-    lateFeePerDay
-  });
-
-  user.tenantProfile = tenant._id;
-  await user.save();
-
-  await Property.updateOne(
-    { _id: propertyId, 'floors.name': floorName, 'floors.rooms.number': roomNumber, 'floors.rooms.beds.label': bedLabel },
-    {
-      $set: {
-        'floors.$[floor].rooms.$[room].beds.$[bed].status': 'occupied',
-        'floors.$[floor].rooms.$[room].beds.$[bed].occupiedBy': tenant._id,
-        'floors.$[floor].rooms.$[room].beds.$[bed].monthlyRent': monthlyRent
-      }
-    },
-    {
-      arrayFilters: [{ 'floor.name': floorName }, { 'room.number': roomNumber }, { 'bed.label': bedLabel }]
+    if (!name || !email || !propertyId || !floorName || !roomNumber || !bedLabel) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
-  );
 
-  return res.status(201).json({ user, tenant });
+    const property = await Property.findById(propertyId);
+    if (!property) return res.status(404).json({ message: "Property not found" });
+
+    const floor = property.floors.find(f => f.name === floorName);
+    if (!floor) return res.status(400).json({ message: "Floor not found" });
+
+    const room = floor.rooms.find(r => r.number === roomNumber);
+    if (!room) return res.status(400).json({ message: "Room not found" });
+
+    const bed = room.beds.find(b => b.label === bedLabel);
+    if (!bed) return res.status(400).json({ message: "Bed not found" });
+
+    if (bed.status === "occupied") {
+      return res.status(400).json({ message: "Bed already occupied" });
+    }
+
+    let user = await User.findOne({ email });
+    let tempPassword = null;
+
+    if (!user) {
+      tempPassword = Math.random().toString(36).slice(-8);
+
+      user = await User.create({
+        name,
+        email,
+        phone,
+        password: tempPassword,
+        role: 'tenant'
+      });
+    } else {
+      user.name = name;
+      user.phone = phone;
+      await user.save();
+    }
+
+    const existingTenant = await Tenant.findOne({
+      user: user._id,
+      property: propertyId,
+      status: "active"
+    });
+
+    if (existingTenant) {
+      return res.status(400).json({
+        message: "Tenant already exists for this property"
+      });
+    }
+
+    const tenant = await Tenant.create({
+      user: user._id,
+      property: propertyId,
+      floorName,
+      roomNumber,
+      bedLabel,
+      monthlyRent: Number(monthlyRent) || 0
+    });
+
+    user.tenantProfile = tenant._id;
+    await user.save();
+
+    const updateResult = await Property.updateOne(
+      {
+        _id: propertyId,
+        'floors.name': floorName,
+        'floors.rooms.number': roomNumber,
+        'floors.rooms.beds.label': bedLabel
+      },
+      {
+        $set: {
+          'floors.$[floor].rooms.$[room].beds.$[bed].status': 'occupied',
+          'floors.$[floor].rooms.$[room].beds.$[bed].occupiedBy': tenant._id,
+          'floors.$[floor].rooms.$[room].beds.$[bed].monthlyRent': Number(monthlyRent) || 0
+        }
+      },
+      {
+        arrayFilters: [
+          { 'floor.name': floorName },
+          { 'room.number': roomNumber },
+          { 'bed.label': bedLabel }
+        ]
+      }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(400).json({
+        message: "Failed to assign bed"
+      });
+    }
+
+    res.status(201).json({
+      message: "Tenant added successfully",
+      user,
+      tenant,
+      tempPassword
+    });
+
+  } catch (err) {
+    console.error("CREATE TENANT ERROR:", err);
+
+    if (err.code === 11000) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+
+    res.status(500).json({
+      message: err.message || "Error creating tenant"
+    });
+  }
 });
 
-router.put('/tenants/:tenantId', async (req, res) => {
-  const tenant = await Tenant.findByIdAndUpdate(req.params.tenantId, req.body, { new: true });
-  if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
-  return res.json(tenant);
+/* ================= REMOVE TENANT ================= */
+
+router.delete('/tenants/:id', async (req, res) => {
+  try {
+    const tenant = await Tenant.findById(req.params.id);
+    if (!tenant) return res.status(404).json({ message: 'Not found' });
+
+    await Property.updateOne(
+      { 'floors.rooms.beds.occupiedBy': tenant._id },
+      {
+        $set: {
+          'floors.$[].rooms.$[].beds.$[bed].status': 'vacant',
+          'floors.$[].rooms.$[].beds.$[bed].occupiedBy': null
+        }
+      },
+      {
+        arrayFilters: [{ 'bed.occupiedBy': tenant._id }]
+      }
+    );
+
+    tenant.status = 'left';
+    await tenant.save();
+
+    res.json({ message: 'Tenant removed' });
+
+  } catch {
+    res.status(500).json({ message: "Error removing tenant" });
+  }
 });
 
-router.delete('/tenants/:tenantId', async (req, res) => {
-  const tenant = await Tenant.findByIdAndUpdate(req.params.tenantId, { status: 'vacated' }, { new: true });
-  if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
-  return res.json({ message: 'Tenant vacated', tenant });
+/* ================= UPDATE RENT ================= */
+
+router.put('/beds/rent', async (req, res) => {
+  try {
+    const { propertyId, floorName, roomNumber, bedLabel, rent } = req.body;
+
+    await Property.updateOne(
+      {
+        _id: propertyId,
+        'floors.name': floorName,
+        'floors.rooms.number': roomNumber,
+        'floors.rooms.beds.label': bedLabel
+      },
+      {
+        $set: {
+          'floors.$[floor].rooms.$[room].beds.$[bed].monthlyRent': Number(rent) || 0
+        }
+      },
+      {
+        arrayFilters: [
+          { 'floor.name': floorName },
+          { 'room.number': roomNumber },
+          { 'bed.label': bedLabel }
+        ]
+      }
+    );
+
+    res.json({ message: 'Rent updated' });
+
+  } catch {
+    res.status(500).json({ message: "Error updating rent" });
+  }
 });
 
-router.post('/rent/generate', async (_req, res) => {
-  const result = await generateMonthlyRent();
-  return res.json(result);
-});
+/* ================= MONTHLY REPORT ================= */
 
-router.post('/expenses', [body('property').notEmpty(), body('category').notEmpty(), body('amount').isNumeric(), body('expenseDate').isISO8601()], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
-  const expense = await Expense.create(req.body);
-  return res.status(201).json(expense);
-});
+router.get('/reports/monthly', async (_req, res) => {
+  try {
+    const month = dayjs().format('YYYY-MM');
 
-router.get('/reports/monthly', async (req, res) => {
-  const month = req.query.month || dayjs().format('YYYY-MM');
-  const start = dayjs(`${month}-01`).startOf('month');
-  const end = start.endOf('month');
+    res.json({
+      month,
+      income: 0,
+      expenses: 0,
+      net: 0
+    });
 
-  const [incomeAgg, expenseAgg] = await Promise.all([
-    Invoice.aggregate([
-      { $match: { status: 'paid', paidAt: { $gte: start.toDate(), $lte: end.toDate() } } },
-      { $group: { _id: null, income: { $sum: '$totalAmount' } } }
-    ]),
-    Expense.aggregate([
-      { $match: { expenseDate: { $gte: start.toDate(), $lte: end.toDate() } } },
-      { $group: { _id: null, expenses: { $sum: '$amount' } } }
-    ])
-  ]);
-
-  const income = incomeAgg[0]?.income || 0;
-  const expenses = expenseAgg[0]?.expenses || 0;
-
-  return res.json({ month, income, expenses, net: income - expenses });
+  } catch {
+    res.status(500).json({ message: "Report error" });
+  }
 });
 
 export default router;
