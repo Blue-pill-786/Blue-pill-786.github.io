@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { api } from "../lib/api";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { updateProperty, getProperty, getProperties } from "../services/adminApi";
+import { useNavigate, useParams } from "react-router-dom";
 
-const AddProperty = () => {
+const EditProperty = () => {
   const navigate = useNavigate();
+  const { id } = useParams();
 
   const [form, setForm] = useState({
     name: "",
@@ -17,6 +18,25 @@ const AddProperty = () => {
   });
 
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchProperty = async () => {
+      try {
+        setPageLoading(true);
+        const property = await getProperty(id);
+        setForm(property);
+      } catch (err) {
+        console.error("Failed to load property", err);
+        setError("Unable to load property details");
+      } finally {
+        setPageLoading(false);
+      }
+    };
+
+    fetchProperty();
+  }, [id]);
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -48,10 +68,7 @@ const AddProperty = () => {
       floors: prev.floors.map((floor, idx) =>
         idx !== floorIndex
           ? floor
-          : {
-              ...floor,
-              rooms: [...floor.rooms, { number: "", beds: [] }]
-            }
+          : { ...floor, rooms: [...floor.rooms, { number: "", beds: [] }] }
       )
     }));
   };
@@ -64,8 +81,8 @@ const AddProperty = () => {
           ? floor
           : {
               ...floor,
-              rooms: floor.rooms.map((room, rIdx) =>
-                rIdx === roomIndex ? { ...room, number: value } : room
+              rooms: floor.rooms.map((room, ridx) =>
+                ridx === roomIndex ? { ...room, number: value } : room
               )
             }
       )
@@ -82,42 +99,31 @@ const AddProperty = () => {
           ? floor
           : {
               ...floor,
-              rooms: floor.rooms.map((room, rIdx) =>
-                rIdx !== roomIndex
+              rooms: floor.rooms.map((room, ridx) =>
+                ridx !== roomIndex
                   ? room
-                  : {
-                      ...room,
-                      beds: [
-                        ...room.beds,
-                        { label: "", monthlyRent: 0, status: "vacant" }
-                      ]
-                    }
+                  : { ...room, beds: [...room.beds, { label: "", monthlyRent: 0, status: "vacant" }] }
               )
             }
       )
     }));
   };
 
-  const updateBed = (floorIndex, roomIndex, bedIndex, key, value) => {
+  const updateBed = (floorIndex, roomIndex, bedIndex, field, value) => {
     setForm((prev) => ({
       ...prev,
-      floors: prev.floors.map((floor, fIdx) =>
-        fIdx !== floorIndex
+      floors: prev.floors.map((floor, idx) =>
+        idx !== floorIndex
           ? floor
           : {
               ...floor,
-              rooms: floor.rooms.map((room, rIdx) =>
-                rIdx !== roomIndex
+              rooms: floor.rooms.map((room, ridx) =>
+                ridx !== roomIndex
                   ? room
                   : {
                       ...room,
-                      beds: room.beds.map((bed, bIdx) =>
-                        bIdx !== bedIndex
-                          ? bed
-                          : {
-                              ...bed,
-                              [key]: key === "monthlyRent" ? Number(value) : value
-                            }
+                      beds: room.beds.map((bed, bidx) =>
+                        bidx === bedIndex ? { ...bed, [field]: value } : bed
                       )
                     }
               )
@@ -132,50 +138,49 @@ const AddProperty = () => {
     e.preventDefault();
 
     if (!form.name || !form.code || !form.city || !form.address) {
-      return alert("All property fields are required");
+      return setError("Please fill all required fields");
     }
-
-    const hasInvalidFloor = form.floors.some(
-      (floor) =>
-        !floor.name.trim() ||
-        floor.rooms.some(
-          (room) =>
-            !room.number.trim() ||
-            room.beds.some((bed) => !bed.label.trim())
-        )
-    );
-
-    if (hasInvalidFloor) {
-      return alert("Please fill all floor, room, and bed labels");
-    }
-
-    setLoading(true);
 
     try {
-      await api.post("/admin/properties", form);
-
-      alert("Property created successfully");
-
+      setLoading(true);
+      setError("");
+      
+      await updateProperty(id, form);
+      
+      alert("Property updated successfully!");
       navigate("/properties");
-
     } catch (err) {
-      console.error("ERROR:", err.response?.data);
-
-      alert(err.response?.data?.message || "Failed to create property");
-
+      console.error(err);
+      setError(err.response?.data?.message || "Failed to update property");
     } finally {
       setLoading(false);
     }
   };
+
+  if (pageLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 py-8 px-4">
+        <div className="max-w-4xl mx-auto text-center text-slate-400">
+          Loading property details...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         {/* HEADER */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-200 to-blue-400 bg-clip-text text-transparent">Add New Property</h1>
-          <p className="mt-2 text-slate-400">Create and manage your PG property with autonomous features</p>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-200 to-blue-400 bg-clip-text text-transparent">Edit Property</h1>
+          <p className="mt-2 text-slate-400">Update property details and configuration</p>
         </div>
+
+        {error && (
+          <div className="mb-6 p-4 rounded-lg bg-red-900/20 border border-red-500/30 text-red-200">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
 
@@ -362,7 +367,7 @@ const AddProperty = () => {
               disabled={loading}
               className="flex-1 px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-700 text-white font-semibold rounded-lg transition shadow-lg hover:shadow-cyan-500/25 disabled:shadow-none"
             >
-              {loading ? "Creating Property..." : "✓ Create Property"}
+              {loading ? "Updating Property..." : "✓ Save Changes"}
             </button>
             <button
               type="button"
@@ -377,7 +382,6 @@ const AddProperty = () => {
       </div>
     </div>
   );
-
 };
 
-export default AddProperty;
+export default EditProperty;

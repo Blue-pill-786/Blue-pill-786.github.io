@@ -12,7 +12,9 @@
     "build:frontend": "npm --workspace frontend run build"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "lucide-react": "^1.8.0",
-    "mongodb": "^7.1.1"
+    "mongodb": "^7.1.1",
+    "morgan": "^1.10.1"
   }
 }

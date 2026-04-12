@@ -19,17 +19,39 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <form onSubmit={onSubmit} className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6">
-        <h2 className="text-2xl font-semibold">Login</h2>
-        <p className="mt-1 text-sm text-slate-400">Admin, manager, staff, or tenant access</p>
-        {error && <p className="mt-4 rounded bg-rose-900/30 p-2 text-sm text-rose-300">{error}</p>}
-        <div className="mt-4 space-y-3">
-          <input className="w-full rounded-md border border-slate-700 bg-slate-800 p-2" placeholder="Email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-          <input className="w-full rounded-md border border-slate-700 bg-slate-800 p-2" placeholder="Password" type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
-          <button className="w-full rounded-md bg-cyan-600 p-2 font-medium hover:bg-cyan-500" type="submit">Sign in</button>
+    <div className="flex min-h-screen items-center justify-center bg-grid px-4 py-10">
+      <div className="w-full max-w-lg rounded-[2rem] border border-cyan-500/10 bg-slate-950/95 p-8 shadow-float">
+        <div className="mb-8 space-y-3 text-center">
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/70">Welcome back</p>
+          <h1 className="text-3xl font-semibold text-white">Login to PG Ops</h1>
+          <p className="text-sm text-slate-400">Secure access for admins and tenants with a futuristic dashboard feel.</p>
         </div>
-      </form>
+
+        {error && <div className="mb-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
+
+        <form onSubmit={onSubmit} className="space-y-5">
+          <input
+            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner transition focus:border-cyan-400"
+            placeholder="Email"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          />
+          <input
+            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner transition focus:border-cyan-400"
+            placeholder="Password"
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+          />
+          <button
+            className="w-full rounded-3xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.01] hover:shadow-[0_20px_50px_rgba(56,189,248,0.35)]"
+            type="submit"
+          >
+            Sign in
+          </button>
+        </form>
+      </div>
     </div>
   );
 };

@@ -33,33 +33,33 @@ const BedCard = ({ bed, propertyId, roomNumber, floorName, refresh }) => {
     }
   };
 
+  const occupantName = bed.occupiedBy?.user?.name || bed.occupiedBy?.name || "Tenant";
+  const occupantEmail = bed.occupiedBy?.user?.email || null;
+
   return (
-    <div className="p-2 border w-40 rounded bg-slate-800 text-white">
-
-      <p className="font-semibold">{bed.label}</p>
-
-      <p>₹{bed.monthlyRent}</p>
-
-      <p className={bed.status === "occupied" ? "text-red-400" : "text-green-400"}>
+    <div className="p-3 w-44 rounded-3xl border border-slate-700 bg-slate-900 text-white shadow-lg shadow-cyan-500/10">
+      <p className="font-semibold text-cyan-200">{bed.label}</p>
+      <p className="mt-1 text-sm text-slate-400">₹{bed.monthlyRent}</p>
+      <p className={bed.status === "occupied" ? "mt-2 text-sm text-rose-400" : "mt-2 text-sm text-emerald-300"}>
         {bed.status}
       </p>
 
-      {/* ✅ SHOW TENANT NAME */}
       {bed.occupiedBy && (
-        <p className="text-sm mt-1">
-          {bed.occupiedBy.user?.name || "Tenant"}
-        </p>
+        <div className="mt-2 text-sm text-slate-300">
+          <p>{occupantName}</p>
+          {occupantEmail && <p className="text-xs text-slate-500">{occupantEmail}</p>}
+        </div>
       )}
 
-      <div className="mt-2 flex flex-col gap-1">
+      <div className="mt-4 flex flex-col gap-2">
         {bed.status === "occupied" && (
-          <button onClick={handleRemove} className="bg-red-500 px-2 py-1 rounded">
-            Remove
+          <button onClick={handleRemove} className="rounded-xl bg-rose-500 px-2 py-1 text-sm transition hover:bg-rose-400">
+            Remove tenant
           </button>
         )}
 
-        <button onClick={handleRent} className="bg-blue-500 px-2 py-1 rounded">
-          Edit Rent
+        <button onClick={handleRent} className="rounded-xl bg-sky-500 px-2 py-1 text-sm transition hover:bg-sky-400">
+          Edit rent
         </button>
       </div>
     </div>

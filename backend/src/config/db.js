@@ -3,11 +3,19 @@ import { env } from './env.js';
 
 export const connectDB = async () => {
   try {
-    await mongoose.connect(env.mongoUri, {
-      serverSelectionTimeoutMS: 5000,
-      tls: true,
-      tlsAllowInvalidCertificates: true, // dev fix for your SSL nonsense
-    });
+    const options = {
+      serverSelectionTimeoutMS: 5000
+    };
+
+    if (env.mongoUri.startsWith('mongodb+srv://')) {
+      options.tls = true;
+    }
+
+    if (env.mongoTlsAllowInvalidCertificates) {
+      options.tlsAllowInvalidCertificates = true;
+    }
+
+    await mongoose.connect(env.mongoUri, options);
 
     console.log(`MongoDB connected: ${mongoose.connection.host}`);
   } catch (error) {

@@ -21,8 +21,8 @@ const AdminDashboard = () => {
           api.get('/admin/reports/monthly')
         ]);
 
-        setDashboard(dRes.data);
-        setReport(rRes.data);
+        setDashboard(dRes.data.data);
+        setReport(rRes.data.data);
 
       } catch (err) {
         console.error("Dashboard error:", err);
@@ -38,31 +38,22 @@ const AdminDashboard = () => {
   // ✅ Loading UI
   if (loading) {
     return (
-      <div className="text-center text-slate-400 py-10">
-        Loading dashboard...
-      </div>
+      <div className="text-center text-slate-400 py-10">Loading dashboard...</div>
     );
   }
 
-  // ✅ Error UI
   if (error) {
     return (
-      <div className="text-center text-red-400 py-10">
-        {error}
-      </div>
+      <div className="text-center text-red-400 py-10">{error}</div>
     );
   }
 
-  // ✅ Safety fallback
   if (!dashboard) {
     return (
-      <div className="text-center text-slate-400 py-10">
-        No data available
-      </div>
+      <div className="text-center text-slate-400 py-10">No data available</div>
     );
   }
 
-  // ✅ Safe chart data
   const occupancyData = [
     { name: 'Occupied', value: dashboard.occupiedBeds || 0 },
     { name: 'Vacant', value: dashboard.vacantBeds || 0 }
@@ -70,39 +61,50 @@ const AdminDashboard = () => {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-[2rem] border border-cyan-500/10 bg-slate-950/90 p-6 shadow-float card-glow">
+        <h2 className="text-3xl font-semibold text-cyan-100">Admin Command Center</h2>
+        <p className="mt-2 text-sm text-slate-400">Insights, occupancy and finance data in one polished dashboard.</p>
+      </div>
 
-      {/* 🔹 Stats */}
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Tenants" value={dashboard.totalTenants || 0} />
-        <StatCard title="Pending Payments" value={dashboard.pendingInvoices || 0} />
-        <StatCard
-          title="Monthly Revenue"
-          value={`₹${dashboard.monthlyRevenue?.toLocaleString() || 0}`}
-        />
-        <StatCard title="Properties" value={dashboard.totalProperties || 0} />
+        <StatCard title="Total Tenants" value={dashboard.totalTenants || 0} className="card-glow shadow-float" />
+        <StatCard title="Total Properties" value={dashboard.totalProperties || 0} className="card-glow shadow-float" />
+        <StatCard title="Occupied Beds" value={dashboard.occupiedBeds || 0} className="card-glow shadow-float" />
+        <StatCard title="Vacant Beds" value={dashboard.vacantBeds || 0} className="card-glow shadow-float" />
       </section>
 
-      {/* 🔹 Charts + Reports */}
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-[2rem] border border-cyan-500/10 bg-slate-950/90 p-5 shadow-float card-glow">
+          <h3 className="font-semibold text-white mb-3">Automation Status</h3>
+          <div className="space-y-3 text-sm text-slate-300">
+            <div className="rounded-3xl bg-slate-900/80 p-4">
+              <p className="text-slate-400">Cron Automation</p>
+              <p className="mt-1 text-xl font-semibold text-cyan-300">{dashboard.automation?.enabled ? 'Enabled' : 'Disabled'}</p>
+            </div>
+            <div className="rounded-3xl bg-slate-900/80 p-4">
+              <p className="text-slate-400">Timezone</p>
+              <p className="mt-1 text-lg text-slate-100">{dashboard.automation?.timezone || 'UTC'}</p>
+            </div>
+            <div className="rounded-3xl bg-slate-900/80 p-4">
+              <p className="text-slate-400">Notification Provider</p>
+              <p className="mt-1 text-lg text-slate-100">{dashboard.automation?.notificationProvider || 'console'}</p>
+            </div>
+            <div className="rounded-3xl bg-slate-900/80 p-4">
+              <p className="text-slate-400">Admin Email</p>
+              <p className="mt-1 text-lg text-slate-100">{dashboard.automation?.adminEmail || 'Not configured'}</p>
+            </div>
+          </div>
+        </div>
 
-        {/* 📊 Occupancy Chart */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <h3 className="font-semibold mb-2">Occupancy</h3>
-
+        <div className="rounded-[2rem] border border-cyan-500/10 bg-slate-950/90 p-5 shadow-float card-glow">
+          <h3 className="font-semibold text-white mb-3">Occupancy</h3>
           <div className="h-64">
             {occupancyData.every(d => d.value === 0) ? (
-              <div className="flex items-center justify-center h-full text-slate-500">
-                No occupancy data
-              </div>
+              <div className="flex items-center justify-center h-full text-slate-500">No occupancy data</div>
             ) : (
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie
-                    data={occupancyData}
-                    dataKey="value"
-                    outerRadius={90}
-                    label
-                  >
+                  <Pie data={occupancyData} dataKey="value" outerRadius={90} label>
                     {occupancyData.map((_, index) => (
                       <Cell key={index} fill={COLORS[index % COLORS.length]} />
                     ))}
@@ -114,24 +116,61 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* 💰 Finance Report */}
         {report && (
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <h3 className="font-semibold">
-              Monthly Finance ({report.month || "N/A"})
-            </h3>
-
-            <div className="mt-3 space-y-2 text-sm text-slate-300">
-              <p>Income: ₹{report.income?.toLocaleString() || 0}</p>
-              <p>Expenses: ₹{report.expenses?.toLocaleString() || 0}</p>
-              <p className="font-semibold text-cyan-300">
-                Net: ₹{report.net?.toLocaleString() || 0}
-              </p>
+          <div className="rounded-[2rem] border border-cyan-500/10 bg-slate-950/90 p-5 shadow-float card-glow">
+            <h3 className="font-semibold text-white">Monthly Finance</h3>
+            <p className="text-sm text-slate-400">{report.month || "N/A"}</p>
+            <div className="mt-4 space-y-3 text-sm text-slate-300">
+              <div className="rounded-3xl bg-slate-900/80 p-4">
+                <p className="text-slate-400">Income</p>
+                <p className="mt-1 text-xl font-semibold text-cyan-300">₹{report.income?.toLocaleString() || 0}</p>
+              </div>
+              <div className="rounded-3xl bg-slate-900/80 p-4">
+                <p className="text-slate-400">Expenses</p>
+                <p className="mt-1 text-xl font-semibold text-rose-400">₹{report.expenses?.toLocaleString() || 0}</p>
+              </div>
+              <div className="rounded-3xl bg-slate-900/80 p-4">
+                <p className="text-slate-400">Net</p>
+                <p className="mt-1 text-xl font-semibold text-emerald-300">₹{report.net?.toLocaleString() || 0}</p>
+              </div>
             </div>
           </div>
         )}
-
       </section>
+
+      {dashboard.occupancySummary?.length > 0 && (
+        <section className="rounded-[2rem] border border-cyan-500/10 bg-slate-950/90 p-5 shadow-float card-glow">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="font-semibold text-white">Property Occupancy Details</h3>
+              <p className="text-sm text-slate-400">Detailed bed-level occupancy per property.</p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-3 overflow-x-auto">
+            {dashboard.occupancySummary.map((property) => (
+              <div key={property.propertyId} className="rounded-3xl bg-slate-900/80 p-4 grid gap-2 sm:grid-cols-4">
+                <div>
+                  <p className="text-slate-400 text-xs uppercase">Property</p>
+                  <p className="text-sm text-white">{property.name || 'Unnamed'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs uppercase">Total Beds</p>
+                  <p className="text-sm text-white">{property.totalBeds}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs uppercase">Occupied</p>
+                  <p className="text-sm text-white">{property.occupiedBeds}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs uppercase">Vacant</p>
+                  <p className="text-sm text-white">{property.vacantBeds}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 };

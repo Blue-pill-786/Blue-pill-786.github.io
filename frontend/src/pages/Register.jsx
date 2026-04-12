@@ -1,16 +1,20 @@
 import { useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const [form, setForm] = useState({
     name: "",
     email: "",
-    password: "",
-    role: "tenant",
+    password: ""
   });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleChange = (e) => {
     setForm({
@@ -22,63 +26,84 @@ const RegisterPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    console.log("Sending:", form); // 👈 debugging
+    if (!form.name || !form.email || !form.password) {
+      setError("All fields are required.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
 
     try {
-      const res = await axios.post(
-        "http://localhost:4000/api/auth/register",
-        form
-      );
+      await api.post('/auth/register', form);
+      const user = await login(form.email, form.password);
 
-      alert(res.data.message);
-      navigate("/login");
-
+      if (user.role === 'tenant') {
+        navigate('/tenant');
+      } else {
+        navigate('/admin');
+      }
     } catch (err) {
-      console.log("ERROR:", err.response?.data);
-      alert(err.response?.data?.message || "Something went wrong");
+      const msg = err.response?.data?.message;
+      setError(msg || "Registration failed");
+
+      if (msg === "User already exists") {
+        setError("Account exists. Please login instead.");
+        navigate("/login");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div>
-      <h2>Register</h2>
+    <div className="flex min-h-screen items-center justify-center bg-grid px-4 py-10">
+      <div className="w-full max-w-lg rounded-[2rem] border border-cyan-500/10 bg-slate-950/95 p-8 shadow-float">
+        <div className="mb-8 text-center">
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/70">Create account</p>
+          <h1 className="mt-3 text-3xl font-semibold text-white">Register for PG Ops</h1>
+          <p className="mt-2 text-sm text-slate-400">Sign up to manage tenants, properties and billing in style.</p>
+        </div>
 
-      <form onSubmit={handleSubmit}>
-        <input
-          name="name"
-          value={form.name}
-          placeholder="Name"
-          onChange={handleChange}
-          required
-        />
+        {error && <div className="mb-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
 
-        <input
-          name="email"
-          type="email"
-          value={form.email}
-          placeholder="Email"
-          onChange={handleChange}
-          required
-        />
-
-        <input
-          name="password"
-          type="password"
-          value={form.password}
-          placeholder="Password"
-          onChange={handleChange}
-          required
-        />
-
-        <select name="role" value={form.role} onChange={handleChange}>
-          <option value="tenant">Tenant</option>
-          <option value="admin">Admin</option>
-        </select>
-
-        <button type="submit">Register</button>
-      </form>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <input
+            name="name"
+            value={form.name}
+            placeholder="Name"
+            onChange={handleChange}
+            required
+            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner focus:border-cyan-400"
+          />
+          <input
+            name="email"
+            type="email"
+            value={form.email}
+            placeholder="Email"
+            onChange={handleChange}
+            required
+            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner focus:border-cyan-400"
+          />
+          <input
+            name="password"
+            type="password"
+            value={form.password}
+            placeholder="Password"
+            onChange={handleChange}
+            required
+            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner focus:border-cyan-400"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-3xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.01] hover:shadow-[0_20px_50px_rgba(56,189,248,0.35)]"
+          >
+            {loading ? "Registering..." : "Register"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
-
 export default RegisterPage;
