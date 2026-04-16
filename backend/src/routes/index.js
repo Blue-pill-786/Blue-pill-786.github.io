@@ -1,19 +1,32 @@
 import authRoutes from './auth.js';
 import tenantRoutes from './tenant.js';
 import paymentRoutes from './payments.js';
+import expenseRoutes from './expenses.js';
+import paymentProcessorRoutes from './paymentProcessor.js';
+import saasRoutes from './saas.js';
+import adminRoutes from './admin/index.js';
 
-import adminDashboard from './admin/dashboard.js';
-import adminProperty from './admin/property.js';
-import adminTenant from './admin/tenant.js';
-import adminReport from './admin/report.js';
-
+/**
+ * Register all API routes
+ * All admin routes auto-protected with /api/admin middleware
+ */
 export const registerRoutes = (app) => {
+  // Public routes
   app.use('/api/auth', authRoutes);
+  
+  // Tenant routes (protected)
   app.use('/api/tenant', tenantRoutes);
+  
+  // Payment routes (protected)
   app.use('/api/payments', paymentRoutes);
-
-  app.use('/api/admin/dashboard', adminDashboard);
-  app.use('/api/admin/property', adminProperty);
-  app.use('/api/admin/tenant', adminTenant);
-  app.use('/api/admin/report', adminReport);
+  app.use('/api/payment-processor', paymentProcessorRoutes);
+  
+  // Expense routes (protected)
+  app.use('/api/expenses', expenseRoutes);
+  
+  // SaaS routes (protected)
+  app.use('/api/saas', saasRoutes);
+  
+  // Admin routes (auto-protected + authorized with admin/manager/owner)
+  app.use('/api/admin', adminRoutes);
 };

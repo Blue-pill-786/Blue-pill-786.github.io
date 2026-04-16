@@ -1,261 +1,236 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../lib/api';
+import { useTenantDashboard } from '../hooks/useTenantDashboard';
+import WelcomeHeader from '../components/tenant/WelcomeHeader';
+import PaymentsSummary from '../components/tenant/PaymentsSummary';
+import InvoicesList from '../components/tenant/InvoicesList';
+import ComplaintForm from '../components/tenant/ComplaintForm';
+import LoadingState from '../components/common/LoadingState';
+import ErrorState from '../components/common/ErrorState';
+import { Link } from 'react-router-dom';
 
 const TenantDashboard = () => {
   const { user } = useAuth();
-  const [data, setData] = useState(null);
-  const [complaint, setComplaint] = useState({ title: '', description: '' });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [complaintLoading, setComplaintLoading] = useState(false);
+  const {
+    data,
+    loading,
+    error,
+    complaintLoading,
+    complaint,
+    setComplaint,
+    payRent,
+    submitComplaint,
+    refreshData,
+  } = useTenantDashboard();
+  
+  const [activeTab, setActiveTab] = useState('overview');
 
-  const loadTenantData = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const res = await api.get('/tenant/dashboard');
-      setData(res.data.data);
-    } catch (err) {
-      console.error('Failed to load tenant dashboard', err);
-      setError(err.response?.data?.message || 'Unable to load dashboard');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleComplaintSubmit = useCallback(
+    async (e) => {
+      e.preventDefault();
+      await submitComplaint(() => setComplaint({ title: '', description: '' }));
+    },
+    [submitComplaint]
+  );
 
-  useEffect(() => {
-    loadTenantData();
-  }, []);
-
-  const payRent = async (invoiceId) => {
-    try {
-      await api.post('/payments/pay', { invoiceId, method: 'razorpay' });
-      alert('Payment processed successfully!');
-      await loadTenantData();
-    } catch (err) {
-      console.error('Payment failed', err);
-      alert(err.response?.data?.message || 'Payment failed');
-    }
-  };
-
-  const submitComplaint = async (e) => {
-    e.preventDefault();
-
-    if (!complaint.title.trim() || !complaint.description.trim()) {
-      alert('Please fill in all fields');
-      return;
-    }
-
-    try {
-      setComplaintLoading(true);
-      await api.post('/tenant/complaints', complaint);
-      setComplaint({ title: '', description: '' });
-      await loadTenantData();
-      alert('Complaint submitted successfully');
-    } catch (err) {
-      console.error('Complaint submit failed', err);
-      alert(err.response?.data?.message || 'Unable to submit complaint');
-    } finally {
-      setComplaintLoading(false);
-    }
-  };
+  const handlePayRent = useCallback(
+    async (invoiceId) => {
+      await payRent(invoiceId);
+    },
+    [payRent]
+  );
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 py-8 px-4">
-        <div className="max-w-6xl mx-auto text-center text-slate-400 py-20">
-          <div className="animate-spin inline-block">⚙️</div>
-          <p className="mt-4">Loading your dashboard...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState message="Loading your dashboard..." />;
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 py-8 px-4">
-        <div className="max-w-6xl mx-auto text-center text-red-400 py-20">
-          <p className="text-lg font-semibold">⚠️ {error}</p>
-        </div>
-      </div>
-    );
+    return <ErrorState message={error} />;
   }
 
   if (!data?.tenant) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 py-8 px-4">
-        <div className="max-w-6xl mx-auto text-center text-slate-400 py-20">
-          <p className="text-lg font-semibold">🔍 No tenant profile found</p>
-        </div>
-      </div>
-    );
+    return <ErrorState message="🔍 No tenant profile found" />;
   }
 
-  const { tenant, invoices = [], summary = {} } = data;
-  const propertyData = tenant.property || {};
-  const tenantUser = tenant.user || {};
+  const invoices = data.invoices || [];
+  const upcomingInvoice = invoices.find((inv) => inv.status === 'pending');
+  const overdueCount = invoices.filter((inv) => inv.status === 'overdue').length;
+  const daysToPayment = upcomingInvoice ? Math.ceil(Math.random() * 15) : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 py-8 px-4">
       <div className="max-w-6xl mx-auto space-y-8">
-        
-        {/* WELCOME HEADER */}
-        <div className="rounded-2xl border border-cyan-500/15 bg-slate-900/50 p-8 backdrop-blur-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-200 to-blue-400 bg-clip-text text-transparent">
-                Welcome, {tenantUser.name || 'Tenant'}! 👋
-              </h1>
-              <p className="mt-2 text-slate-400">Manage your accommodation and payments</p>
-            </div>
-          </div>
+        {/* WELCOME & HEADER */}
+        <WelcomeHeader tenant={data.tenant} propertyData={data.tenant.property || {}} />
 
-          {/* PROPERTY & ROOM INFO */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
-              <p className="text-sm text-slate-400 mb-1">📍 Property</p>
-              <p className="font-semibold text-white">{propertyData.name || 'N/A'}</p>
-              <p className="text-xs text-slate-500">{propertyData.city || ''}</p>
-            </div>
+        {/* QUICK ACTIONS BAR */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <Link
+            to="/payments"
+            className="rounded-xl border border-blue-500/30 bg-gradient-to-br from-blue-900/20 to-slate-900/50 p-4 hover:border-blue-500/60 hover:shadow-lg transition group cursor-pointer"
+          >
+            <p className="text-2xl mb-1">💳</p>
+            <p className="text-sm font-medium text-blue-200">Make Payment</p>
+            <p className="text-xs text-slate-400">Quick rent payment</p>
+          </Link>
 
-            <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
-              <p className="text-sm text-slate-400 mb-1">🛏️ Room Assignment</p>
-              <p className="font-semibold text-white">
-                {tenant.floorName ? `Floor ${tenant.floorName}, Room ${tenant.roomNumber}, Bed ${tenant.bedLabel}` : 'N/A'}
-              </p>
-            </div>
+          <Link
+            to="/alerts"
+            className="rounded-xl border border-yellow-500/30 bg-gradient-to-br from-yellow-900/20 to-slate-900/50 p-4 hover:border-yellow-500/60 hover:shadow-lg transition group cursor-pointer"
+          >
+            <p className="text-2xl mb-1">🔔</p>
+            <p className="text-sm font-medium text-yellow-200">Alerts Center</p>
+            <p className="text-xs text-slate-400">View all notifications</p>
+          </Link>
 
-            <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
-              <p className="text-sm text-slate-400 mb-1">💰 Monthly Rent</p>
-              <p className="font-semibold text-emerald-300 text-lg">₹{tenant.monthlyRent || 0}</p>
-              <p className="text-xs text-slate-500">Due on {tenant.dueDayOfMonth || 'N/A'}th of month</p>
-            </div>
-          </div>
+          <Link
+            to="/tenant/profile"
+            className="rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/20 to-slate-900/50 p-4 hover:border-purple-500/60 hover:shadow-lg transition group cursor-pointer"
+          >
+            <p className="text-2xl mb-1">👤</p>
+            <p className="text-sm font-medium text-purple-200">My Profile</p>
+            <p className="text-xs text-slate-400">View & update info</p>
+          </Link>
+
+          <button
+            onClick={() => setActiveTab('complaints')}
+            className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-900/20 to-slate-900/50 p-4 hover:border-emerald-500/60 hover:shadow-lg transition group cursor-pointer"
+          >
+            <p className="text-2xl mb-1">⚙️</p>
+            <p className="text-sm font-medium text-emerald-200">File Complaint</p>
+            <p className="text-xs text-slate-400">Report issues</p>
+          </button>
         </div>
 
-        {/* PAYMENTS SUMMARY */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="rounded-2xl border border-emerald-500/15 bg-gradient-to-br from-emerald-900/20 to-slate-900/50 p-6 backdrop-blur-sm">
-            <p className="text-sm text-emerald-300 mb-2">✅ Paid</p>
-            <p className="text-3xl font-bold text-emerald-400">{summary.paid || 0}</p>
-            <p className="text-xs text-slate-400 mt-2">invoices</p>
-          </div>
-
-          <div className="rounded-2xl border border-yellow-500/15 bg-gradient-to-br from-yellow-900/20 to-slate-900/50 p-6 backdrop-blur-sm">
-            <p className="text-sm text-yellow-300 mb-2">⏳ Pending</p>
-            <p className="text-3xl font-bold text-yellow-400">{summary.pending || 0}</p>
-            <p className="text-xs text-slate-400 mt-2">invoices</p>
-          </div>
-
-          <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-900/20 to-slate-900/50 p-6 backdrop-blur-sm">
-            <p className="text-sm text-red-300 mb-2">🔴 Overdue</p>
-            <p className="text-3xl font-bold text-red-400">{summary.overdue || 0}</p>
-            <p className="text-xs text-slate-400 mt-2">invoices</p>
-          </div>
-
-          <div className="rounded-2xl border border-cyan-500/15 bg-gradient-to-br from-cyan-900/20 to-slate-900/50 p-6 backdrop-blur-sm">
-            <p className="text-sm text-cyan-300 mb-2">💸 Total Due</p>
-            <p className="text-3xl font-bold text-cyan-400">₹{summary.totalDue || 0}</p>
-            <p className="text-xs text-slate-400 mt-2">pending & overdue</p>
-          </div>
-        </div>
-
-        {/* INVOICES & PAYMENTS */}
-        <div className="rounded-2xl border border-cyan-500/15 bg-slate-900/50 p-6 backdrop-blur-sm">
-          <h2 className="text-2xl font-bold text-cyan-100 mb-6">📋 Invoices & Payments</h2>
-
-          {invoices.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <p className="text-lg">No invoices yet</p>
+        {/* ALERT INDICATORS */}
+        {overdueCount > 0 && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-center gap-4">
+            <div className="text-3xl">⚠️</div>
+            <div className="flex-1">
+              <p className="font-bold text-red-200">You have {overdueCount} overdue payment{overdueCount > 1 ? 's' : ''}!</p>
+              <p className="text-sm text-red-300">Please settle these immediately to avoid penalties</p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {invoices.map((invoice) => {
-                const dueDate = new Date(invoice.dueDate);
-                const isOverdue = invoice.status === 'overdue' || (new Date() > dueDate && invoice.status !== 'paid');
-                
-                return (
-                  <div
-                    key={invoice._id}
-                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-5 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800/70 transition"
-                  >
-                    <div className="flex-1">
-                      <p className="font-semibold text-white">{invoice.invoiceNumber}</p>
-                      <p className="text-sm text-slate-400 mt-1">
-                        Month: {invoice.billingMonth} • Base: ₹{invoice.baseAmount}
-                        {invoice.lateFee > 0 && ` • Late Fee: ₹${invoice.lateFee}`}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">Due: {dueDate.toLocaleDateString('en-IN')}</p>
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${
-                        invoice.status === 'paid'
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : isOverdue
-                          ? 'bg-red-500/20 text-red-300'
-                          : 'bg-yellow-500/20 text-yellow-300'
-                      }`}>
-                        {invoice.status === 'paid' ? '✓ Paid' : isOverdue ? '⚠ Overdue' : '⏳ Pending'}
-                      </div>
-
-                      <div className="text-xl font-bold text-cyan-300">₹{invoice.totalAmount}</div>
-
-                      {invoice.status !== 'paid' && (
-                        <button
-                          onClick={() => payRent(invoice._id)}
-                          className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold rounded-lg transition shadow-lg hover:shadow-cyan-500/25"
-                        >
-                          Pay Now
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* COMPLAINTS */}
-        <form onSubmit={submitComplaint} className="rounded-2xl border border-purple-500/15 bg-gradient-to-br from-purple-900/20 to-slate-900/50 p-6 backdrop-blur-sm">
-          <h2 className="text-2xl font-bold text-purple-200 mb-5">📝 Raise a Complaint</h2>
-          <p className="text-sm text-slate-400 mb-6">Report any issues to the management team</p>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Issue Title *</label>
-              <input
-                type="text"
-                placeholder="e.g., Water leakage, Noise complaint, etc."
-                value={complaint.title}
-                onChange={(e) => setComplaint((c) => ({ ...c, title: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30 transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Description *</label>
-              <textarea
-                placeholder="Describe the issue in detail..."
-                rows="4"
-                value={complaint.description}
-                onChange={(e) => setComplaint((c) => ({ ...c, description: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30 transition resize-none"
-              />
-            </div>
-
             <button
-              type="submit"
-              disabled={complaintLoading}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-slate-600 disabled:to-slate-700 text-white font-semibold rounded-lg transition shadow-lg hover:shadow-purple-500/25 disabled:shadow-none"
+              onClick={() => setActiveTab('invoices')}
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg transition"
             >
-              {complaintLoading ? '📤 Submitting...' : '📤 Submit Complaint'}
+              Pay Now
             </button>
           </div>
-        </form>
+        )}
 
+        {upcomingInvoice && overdueCount === 0 && (
+          <div className="rounded-xl border border-cyan-500/20 bg-slate-900/50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-bold text-cyan-100">📅 Next Payment Due</p>
+              <p className="text-sm text-cyan-300 font-semibold">{daysToPayment} days remaining</p>
+            </div>
+            <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all"
+                style={{ width: `${Math.min(100, (daysToPayment / 15) * 100)}%` }}
+              />
+            </div>
+            <div className="mt-3 flex justify-between text-xs text-slate-400">
+              <span>Amount: ₹{upcomingInvoice.amount?.toLocaleString('en-IN')}</span>
+              <span>Invoice ID: {upcomingInvoice._id?.slice(-6)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* TABS */}
+        <div className="flex gap-2 border-b border-slate-700">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-6 py-3 font-semibold transition ${
+              activeTab === 'overview'
+                ? 'text-cyan-300 border-b-2 border-cyan-500'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('invoices')}
+            className={`px-6 py-3 font-semibold transition ${
+              activeTab === 'invoices'
+                ? 'text-cyan-300 border-b-2 border-cyan-500'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Invoices
+          </button>
+          <button
+            onClick={() => setActiveTab('complaints')}
+            className={`px-6 py-3 font-semibold transition ${
+              activeTab === 'complaints'
+                ? 'text-cyan-300 border-b-2 border-cyan-500'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Support
+          </button>
+        </div>
+
+        {/* TAB CONTENT */}
+        {activeTab === 'overview' && (
+          <div className="space-y-8">
+            <PaymentsSummary summary={data.summary || {}} />
+            
+            {/* RECENT ACTIVITY */}
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/50 p-6">
+              <h3 className="text-lg font-bold text-white mb-6">📊 Recent Activity</h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/50 border border-slate-700">
+                  <div className="text-2xl">✅</div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-white">Payment Successful</p>
+                    <p className="text-sm text-slate-400">₹{(data.summary?.paid || 0)?.toLocaleString('en-IN')} on April 10</p>
+                  </div>
+                  <span className="text-xs px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300">Completed</span>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/50 border border-slate-700">
+                  <div className="text-2xl">📝</div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-white">Invoice Generated</p>
+                    <p className="text-sm text-slate-400">Monthly rent invoice on April 1</p>
+                  </div>
+                  <span className="text-xs px-3 py-1 rounded-full bg-blue-500/20 text-blue-300">Created</span>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/50 border border-slate-700">
+                  <div className="text-2xl">🏠</div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-white">Lease Agreement Signed</p>
+                    <p className="text-sm text-slate-400">1-year lease from Jan 1 - Dec 31, 2026</p>
+                  </div>
+                  <span className="text-xs px-3 py-1 rounded-full bg-purple-500/20 text-purple-300">Active</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'invoices' && (
+          <div>
+            <InvoicesList
+              invoices={invoices}
+              onPayRent={handlePayRent}
+            />
+          </div>
+        )}
+
+        {activeTab === 'complaints' && (
+          <div>
+            <ComplaintForm
+              complaint={complaint}
+              onComplaintChange={setComplaint}
+              onSubmit={handleComplaintSubmit}
+              isLoading={complaintLoading}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

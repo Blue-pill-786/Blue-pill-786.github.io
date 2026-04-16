@@ -18,10 +18,16 @@ const signToken = (id, role) => {
 
 /* ================= REGISTER ================= */
 
-export const register = async ({ name, email, password, phone, role }) => {
+export const register = async ({ name, email, password, phone, role, organizationId }) => {
   const cleanEmail = email.trim().toLowerCase();
 
-  const existing = await User.findOne({ email: cleanEmail });
+  // For backward compatibility: allow registration without organization
+  // Users without org should upgrade to SaaS or be assigned to default org
+  const filter = organizationId 
+    ? { email: cleanEmail, organization: organizationId }
+    : { email: cleanEmail };
+
+  const existing = await User.findOne(filter);
 
   if (existing) {
     const err = new Error('User already exists');
@@ -29,13 +35,20 @@ export const register = async ({ name, email, password, phone, role }) => {
     throw err;
   }
 
-  const user = await User.create({
+  const userData = {
     name: name.trim(),
     email: cleanEmail,
     password,
     phone,
-    role: 'tenant'
-  });
+    role: role || 'tenant'
+  };
+
+  // If organizationId provided, add it
+  if (organizationId) {
+    userData.organization = organizationId;
+  }
+
+  const user = await User.create(userData);
 
   const token = signToken(user._id, user.role);
 
@@ -45,7 +58,8 @@ export const register = async ({ name, email, password, phone, role }) => {
       id: user._id,
       name: user.name,
       email: user.email,
-      role: user.role
+      role: user.role,
+      organizationId: user.organization || null
     }
   };
 };

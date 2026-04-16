@@ -67,6 +67,19 @@ const RegisterPage = () => {
 
         {error && <div className="mb-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
 
+        <div className="mb-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+          <p className="text-sm text-emerald-200">
+            💡 <strong>New:</strong> Create your organization account with our new SaaS platform! Get a 30-day free trial.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/signup')}
+            className="mt-3 w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition"
+          >
+            Start SaaS Signup →
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-5">
           <input
             name="name"
@@ -99,9 +112,13 @@ const RegisterPage = () => {
             disabled={loading}
             className="w-full rounded-3xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.01] hover:shadow-[0_20px_50px_rgba(56,189,248,0.35)]"
           >
-            {loading ? "Registering..." : "Register"}
+            {loading ? "Registering..." : "Register (Legacy)"}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-xs text-slate-500">
+          Note: Legacy registration is for backward compatibility. New users should use SaaS signup above.
+        </p>
       </div>
     </div>
   );

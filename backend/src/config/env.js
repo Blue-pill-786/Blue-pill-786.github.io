@@ -11,7 +11,7 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   redisUrl: process.env.REDIS_URL || '',
-  stripeKey: process.env.STRIPE_SECRET_KEY || '',
+  stripeKey: process.env.STRIPE_SECRET_KEY || 'sk_test_51PoxfPP3XKTw9xnDMD2jrq0JOGBixTnvnmfN6vhFWL4lEyNFYHZr7XG00FZ3U7saS9lbxxy6F84Bf7zrkGMr6FdY00C1zUaWcP',
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
   enableCronJobs: process.env.ENABLE_CRON_JOBS !== 'false',

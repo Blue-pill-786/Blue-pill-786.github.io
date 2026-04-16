@@ -1,188 +1,223 @@
-import mongoose from "mongoose";
-import * as propertyService from "../services/propertyService.js";
-import { catchAsync } from "../utils/catchAsync.js";
+/**
+ * Production-Ready Property Controller
+ */
 
-/* ================= GET ALL ================= */
+import mongoose from 'mongoose';
+import { Property } from '../models/Property.js';
+import { Invoice } from '../models/Invoice.js';
 
-export const getAllProperties = catchAsync(async (_req, res) => {
-  const properties = await propertyService.getAll();
+import ResponseFormatter from '../utils/responseFormatter.js';
+import {
+  NotFoundError,
+  BadRequestError,
+  ValidationError,
+  ConflictError
+} from '../utils/errors.js';
 
-  res.json({
-    success: true,
-    data: properties || [],
-  });
-});
+/* ================= PROPERTY CRUD ================= */
 
-/* ================= CREATE ================= */
+export const getAllProperties = async (req, res, next) => {
+  try {
+    const { city, status, page = 1, limit = 20 } = req.query;
+    const organizationId = req.user.organization;
 
-export const createProperty = catchAsync(async (req, res) => {
-  const { name, code, city, address, floors } = req.body;
+    const query = organizationId ? { organization: organizationId } : {};
+    if (city) query.city = city;
+    if (status) query.status = status;
 
-  // ✅ Basic validation
-  if (!name || !code || !city || !address) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required property fields",
-    });
+    const total = await Property.countDocuments(query);
+
+    const properties = await Property.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .lean();
+
+    return res.json(
+      ResponseFormatter.paginated(properties, page, limit, total, 'Properties retrieved')
+    );
+  } catch (err) {
+    next(err);
   }
+};
 
-  // ✅ Nested validation
-  if (floors && Array.isArray(floors)) {
-    for (const floor of floors) {
-      if (!floor.name?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Floor name is required",
-        });
-      }
+export const getProperty = async (req, res, next) => {
+  try {
+    const property = await Property.findById(req.params.id).lean();
+    if (!property) throw new NotFoundError('Property', req.params.id);
 
-      for (const room of floor.rooms || []) {
-        if (!room.number?.trim()) {
-          return res.status(400).json({
-            success: false,
-            message: "Room number is required",
-          });
-        }
+    return res.json(ResponseFormatter.success(property));
+  } catch (err) {
+    next(err);
+  }
+};
 
-        for (const bed of room.beds || []) {
-          if (!bed.label?.trim()) {
-            return res.status(400).json({
-              success: false,
-              message: "Bed label is required",
-            });
-          }
+export const createProperty = async (req, res, next) => {
+  try {
+    const { name, code, city, address, totalBeds, totalRooms, totalFloors } = req.body;
 
-          if (bed.monthlyRent < 0) {
-            return res.status(400).json({
-              success: false,
-              message: "Invalid bed rent",
-            });
-          }
-        }
-      }
+    if (!name || !code || !city || !address) {
+      throw new ValidationError('Missing required fields', []);
     }
-  }
 
-  console.log("🏢 Creating property:", name);
-
-  const property = await propertyService.create({
-    name,
-    code,
-    city,
-    address,
-    floors,
-  });
-
-  res.status(201).json({
-    success: true,
-    data: property,
-  });
-});
-
-/* ================= GET BY ID ================= */
-
-export const getProperty = catchAsync(async (req, res) => {
-  const { id } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid property ID",
-    });
-  }
-
-  const property = await propertyService.getById(id);
-
-  if (!property) {
-    return res.status(404).json({
-      success: false,
-      message: "Property not found",
-    });
-  }
-
-  res.json({
-    success: true,
-    data: property,
-  });
-});
-
-/* ================= UPDATE ================= */
-
-export const updateProperty = catchAsync(async (req, res) => {
-  const { id } = req.params;
-  const { name, code, city, address, floors } = req.body;
-
-  // ✅ Validate ID
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid property ID",
-    });
-  }
-
-  // ✅ Basic validation
-  if (!name || !code || !city || !address) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required property fields",
-    });
-  }
-
-  // ✅ Nested validation (same as create)
-  if (floors && Array.isArray(floors)) {
-    for (const floor of floors) {
-      if (!floor.name?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Floor name is required",
-        });
-      }
-
-      for (const room of floor.rooms || []) {
-        if (!room.number?.trim()) {
-          return res.status(400).json({
-            success: false,
-            message: "Room number is required",
-          });
-        }
-
-        for (const bed of room.beds || []) {
-          if (!bed.label?.trim()) {
-            return res.status(400).json({
-              success: false,
-              message: "Bed label is required",
-            });
-          }
-
-          if (bed.monthlyRent < 0) {
-            return res.status(400).json({
-              success: false,
-              message: "Invalid bed rent",
-            });
-          }
-        }
-      }
+    if (totalBeds <= 0 || totalRooms <= 0 || totalFloors <= 0) {
+      throw new BadRequestError('Invalid infrastructure values');
     }
-  }
 
-  // 🔥 Update logic
-  const updatedProperty = await propertyService.updateById(id, {
-    name,
-    code,
-    city,
-    address,
-    floors,
-  });
+    const exists = await Property.findOne({ code: code.toUpperCase() });
+    if (exists) throw new ConflictError('Property code already exists');
 
-  if (!updatedProperty) {
-    return res.status(404).json({
-      success: false,
-      message: "Property not found",
+    const property = await Property.create({
+      ...req.body,
+      code: code.toUpperCase(),
+      organization: req.user.organization,
+      createdBy: req.user._id
     });
-  }
 
-  res.json({
-    success: true,
-    data: updatedProperty,
-  });
-});
+    return res.json(ResponseFormatter.created(property));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateProperty = async (req, res, next) => {
+  try {
+    const property = await Property.findById(req.params.id);
+    if (!property) throw new NotFoundError('Property', req.params.id);
+
+    if (req.body.code) {
+      throw new BadRequestError('Cannot change property code');
+    }
+
+    Object.assign(property, req.body);
+    await property.save();
+
+    return res.json(ResponseFormatter.updated(property));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const deleteProperty = async (req, res, next) => {
+  try {
+    const property = await Property.findById(req.params.id);
+    if (!property) throw new NotFoundError('Property', req.params.id);
+
+    property.status = 'inactive';
+    await property.save();
+
+    return res.json(ResponseFormatter.updated(property, 'Property deactivated'));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ================= BED MANAGEMENT ================= */
+
+export const getVacantBeds = async (req, res, next) => {
+  try {
+    const property = await Property.findById(req.params.id).lean();
+    if (!property) throw new NotFoundError('Property', req.params.id);
+
+    const vacantBeds = [];
+
+    (property.floors || []).forEach(floor => {
+      (floor.rooms || []).forEach(room => {
+        (room.beds || []).forEach(bed => {
+          if (bed.status === 'vacant') {
+            vacantBeds.push(bed);
+          }
+        });
+      });
+    });
+
+    return res.json(ResponseFormatter.success(vacantBeds));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateBedStatus = async (req, res, next) => {
+  try {
+    const { id, bedId } = req.params;
+    const { status } = req.body;
+
+    const property = await Property.findById(id);
+    if (!property) throw new NotFoundError('Property', id);
+
+    let found = false;
+
+    property.floors?.forEach(floor => {
+      floor.rooms?.forEach(room => {
+        room.beds?.forEach(bed => {
+          if (bed._id.toString() === bedId) {
+            bed.status = status;
+            found = true;
+          }
+        });
+      });
+    });
+
+    if (!found) throw new NotFoundError('Bed', bedId);
+
+    await property.save();
+
+    return res.json(ResponseFormatter.updated(property));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ================= FINANCIAL ================= */
+
+export const getMonthlyRevenue = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const match = { status: 'paid' };
+    if (id) match.property = new mongoose.Types.ObjectId(id);
+
+    const data = await Invoice.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$finalAmount' }
+        }
+      }
+    ]);
+
+    return res.json(ResponseFormatter.success(data[0] || { total: 0 }));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ================= SEARCH ================= */
+
+export const getPropertiesByCity = async (req, res, next) => {
+  try {
+    const { city } = req.query;
+    if (!city) throw new BadRequestError('City required');
+
+    const properties = await Property.find({
+      city: { $regex: city, $options: 'i' }
+    }).lean();
+
+    return res.json(ResponseFormatter.success(properties));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getPropertiesByManager = async (req, res, next) => {
+  try {
+    const properties = await Property.find({
+      manager: req.user._id
+    }).lean();
+
+    return res.json(ResponseFormatter.success(properties));
+  } catch (err) {
+    next(err);
+  }
+};

@@ -1,126 +1,70 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-const { Schema, model } = mongoose;
-
-const invoiceSchema = new Schema(
+const invoiceSchema = new mongoose.Schema(
   {
     tenant: {
-      type: Schema.Types.ObjectId,
-      ref: 'Tenant',
-      required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      required: true,
     },
 
     property: {
-      type: Schema.Types.ObjectId,
-      ref: 'Property',
-      required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Property",
+      required: true,
+    },
+
+    amount: {
+      type: Number,
+      required: true,
+    },
+
+    tax: {
+      type: Number,
+      default: 0,
     },
 
     invoiceNumber: {
       type: String,
       required: true,
       unique: true,
-      trim: true
     },
 
-    // ✅ NEW: track billing month
-    billingMonth: {
-      type: String, // "2026-04"
-      required: true,
-      trim: true
-    },
-
-    baseAmount: {
+    finalAmount: {
       type: Number,
       required: true,
-      min: 0
-    },
-
-    lateFee: {
-      type: Number,
-      default: 0,
-      min: 0
-    },
-
-    totalAmount: {
-      type: Number,
-      required: true,
-      min: 0
-    },
-
-    dueDate: {
-      type: Date,
-      required: true
     },
 
     status: {
       type: String,
-      enum: ['paid', 'pending', 'overdue', 'cancelled'],
-      default: 'pending'
+      enum: ["pending", "paid", "overdue"],
+      default: "pending",
     },
 
-    paidAt: {
+    dueDate: {
       type: Date,
-      default: null
     },
 
-    canceledAt: {
-      type: Date,
-      default: null
-    },
-
-    cancelReason: {
-      type: String,
-      trim: true,
-      default: null
-    },
-
-    paymentMethod: {
-      type: String,
-      trim: true,
-      enum: ['stripe', 'razorpay', 'cash', 'bank_transfer', 'other'],
-      default: null
-    },
-
-    metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {}
-    }
+    notes: String,
   },
   { timestamps: true }
 );
 
-/* ================= INDEXES ================= */
+/* ================= AUTO LOGIC ================= */
 
-// ✅ Fast queries
-invoiceSchema.index({ tenant: 1, status: 1 });
-invoiceSchema.index({ property: 1 });
-invoiceSchema.index({ billingMonth: 1 });
-invoiceSchema.index({ tenant: 1, billingMonth: 1 }, { unique: true });
-
-/* ================= CONSISTENCY ================= */
-
-invoiceSchema.pre('save', function (next) {
-
-  // ✅ Ensure paidAt and canceledAt stay consistent with status
-  if (this.status === 'paid') {
-    if (!this.paidAt) {
-      this.paidAt = new Date();
-    }
-    this.canceledAt = null;
-    this.cancelReason = null;
-  } else if (this.status === 'cancelled') {
-    if (!this.canceledAt) {
-      this.canceledAt = new Date();
-    }
-    this.paidAt = null;
-  } else {
-    this.paidAt = null;
-    this.canceledAt = null;
-    this.cancelReason = null;
+invoiceSchema.pre("validate", function (next) {
+  // Generate invoice number safely
+  if (this.isNew && !this.invoiceNumber) {
+    this.invoiceNumber = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   }
+
+  // Calculate final amount safely
+  const base = Number(this.amount || 0);
+  const tax = Number(this.tax || 0);
+
+  this.finalAmount = Number((base + tax).toFixed(2));
 
   next();
 });
 
-export const Invoice = model('Invoice', invoiceSchema);
+export const Invoice = mongoose.model("Invoice", invoiceSchema);

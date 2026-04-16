@@ -1,40 +1,31 @@
 import axios from "axios";
 
-/* ================= API INSTANCE ================= */
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:4000/api",
+  baseURL: API_BASE_URL,
   withCredentials: true
 });
 
-/* ================= REQUEST INTERCEPTOR ================= */
+// Consistent token key
+const TOKEN_KEY = "auth_token";
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("pg_token");
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-/* ================= RESPONSE INTERCEPTOR ================= */
-
 api.interceptors.response.use(
-  (response) => response,
-
+  (res) => res,
   (error) => {
     const status = error.response?.status;
 
     console.error("🚨 API ERROR:", error.response?.data || error.message);
 
-    // ✅ Auto logout on auth failure
     if (status === 401) {
-      localStorage.removeItem("pg_token");
-      localStorage.removeItem("pg_user");
-
-      // brutal but effective
+      localStorage.removeItem(TOKEN_KEY);
       window.location.href = "/login";
     }
 
@@ -42,12 +33,4 @@ api.interceptors.response.use(
   }
 );
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("pg_token");
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
+export default api;

@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import dotenv from 'dotenv';
+
+dotenv.config(); // ✅ LOAD FIRST (IMPORTANT)
 
 import { connectDB } from './config/db.js';
 import { env } from './config/env.js';
@@ -10,11 +13,11 @@ import { errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.js';
 import tenantRoutes from './routes/tenant.js';
 import paymentRoutes from './routes/payments.js';
-
-import adminDashboardRoutes from './routes/admin/dashboard.js';
-import adminPropertyRoutes from './routes/admin/property.js';
-import adminTenantRoutes from './routes/admin/tenant.js';
-import adminReportRoutes from './routes/admin/report.js';
+import paymentProcessorRoutes from './routes/paymentProcessor.js';
+import saasRoutes from './routes/saas.js';
+import adminRoutes from './routes/admin/index.js';
+import advancedSearchRoutes from './routes/advancedSearch.js';
+import reportRoutes from './routes/reports.js';
 
 import { initCronJobs } from './jobs/cron.js';
 
@@ -22,22 +25,18 @@ const app = express();
 
 /* ================= MIDDLEWARE ================= */
 
-// Security
 app.use(helmet());
 
-// Logging (dev only)
-if (env.nodeEnv !== 'production') {
+if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
-// CORS
 app.use(cors({
-  origin: env.frontendUrl,
+  origin: process.env.FRONTEND_URL || "*",
   credentials: true
 }));
 
-// Body parser
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 /* ================= HEALTH ================= */
 
@@ -54,13 +53,12 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/payment-processor', paymentProcessorRoutes);
+app.use('/api/saas', saasRoutes);
+app.use('/api/search', advancedSearchRoutes);
+app.use('/api/reports', reportRoutes);
 
-/* ================= ADMIN ================= */
-
-app.use('/api/admin/dashboard', adminDashboardRoutes);
-app.use('/api/admin/properties', adminPropertyRoutes);
-app.use('/api/admin/tenants', adminTenantRoutes);
-app.use('/api/admin/reports', adminReportRoutes);
+app.use('/api/admin', adminRoutes);
 
 /* ================= 404 ================= */
 
@@ -77,17 +75,19 @@ app.use(errorHandler);
 
 /* ================= START ================= */
 
+const PORT = process.env.PORT || 4000; // ✅ SAFE FALLBACK
+
 const start = async () => {
   try {
     await connectDB();
 
-    if (env.enableCronJobs) {
+    if (process.env.ENABLE_CRON === 'true') {
       initCronJobs();
       console.log('⏰ Cron jobs enabled');
     }
 
-    app.listen(env.port, () => {
-      console.log(`🚀 Server running on port ${env.port}`);
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
     });
 
   } catch (err) {

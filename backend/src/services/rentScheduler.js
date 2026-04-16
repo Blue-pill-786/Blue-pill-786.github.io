@@ -20,220 +20,400 @@ const normalizeDueDate = (dayOfMonth, referenceDate = dayjs()) => {
   return dueDate.toDate();
 };
 
+/**
+ * Generate monthly rent invoices for all active tenants
+ * Includes validation and duplicate prevention
+ */
 export const generateMonthlyRent = async (referenceDate = dayjs()) => {
-  const billingMonth = referenceDate.format('YYYY-MM');
+  try {
+    const billingMonth = referenceDate.format('YYYY-MM');
+    console.log(`📋 Starting monthly rent generation for ${billingMonth}`);
 
-  const properties = await Property.find({
-    isActive: true,
-    autoInvoicingEnabled: true
-  }).lean();
+    // Fetch active properties with auto-invoicing enabled
+    const properties = await Property.find({
+      isActive: true,
+      autoInvoicingEnabled: true
+    }).lean();
 
-  if (!properties.length) {
-    console.log(`📋 No active properties with auto-invoicing for ${billingMonth}`);
-    return { billingMonth, created: 0 };
-  }
-
-  const propertyIds = properties.map(p => p._id);
-  const tenants = await Tenant.find({
-    property: { $in: propertyIds },
-    status: 'active'
-  }).populate('user property');
-
-  let created = 0;
-  const notificationTargets = [];
-
-  for (const tenant of tenants) {
-    if (!tenant.property || !tenant.user) continue;
-
-    const exists = await Invoice.exists({ tenant: tenant._id, billingMonth });
-    if (exists) continue;
-
-    const dueDate = normalizeDueDate(tenant.dueDayOfMonth, referenceDate);
-    const invoice = await Invoice.create({
-      tenant: tenant._id,
-      property: tenant.property._id,
-      billingMonth,
-      invoiceNumber: buildInvoiceNumber(tenant._id, billingMonth),
-      baseAmount: tenant.monthlyRent,
-      lateFee: 0,
-      totalAmount: tenant.monthlyRent,
-      dueDate,
-      status: 'pending'
-    });
-
-    created += 1;
-    if (tenant.user?.email) {
-      notificationTargets.push({
-        to: tenant.user.email,
-        subject: `Rent invoice generated for ${billingMonth}`,
-        message: `Invoice ${invoice.invoiceNumber} has been created for ₹${invoice.totalAmount} and is due on ${dayjs(dueDate).format('DD MMM YYYY')}.`
-      });
+    if (!properties.length) {
+      console.log(`⚠️  No active properties with auto-invoicing enabled`);
+      return { billingMonth, created: 0, properties: 0 };
     }
-  }
 
-  for (const notification of notificationTargets) {
-    await sendNotification(notification);
-  }
+    console.log(`✓ Found ${properties.length} properties with auto-invoicing`);
+    const propertyIds = properties.map(p => p._id);
 
-  if (env.adminEmail) {
-    await sendNotification({
-      to: env.adminEmail,
-      subject: `Monthly rent invoices generated: ${billingMonth}`,
-      message: `${created} invoices were generated for active tenants today.`
-    });
-  }
+    // Fetch active tenants in those properties
+    const tenants = await Tenant.find({
+      property: { $in: propertyIds },
+      status: 'active'
+    }).populate('user property');
 
-  return { billingMonth, created };
-};
+    console.log(`✓ Found ${tenants.length} active tenants`);
 
-export const applyLateFees = async (referenceDate = dayjs()) => {
-  const properties = await Property.find({
-    isActive: true,
-    autoLateFeesEnabled: true
-  }).lean();
+    let created = 0;
+    let skipped = 0;
+    const notificationTargets = [];
+    const errors = [];
 
-  if (!properties.length) {
-    console.log(`💰 No properties with auto-late-fees enabled`);
-    return { checked: 0, updated: 0 };
-  }
+    for (const tenant of tenants) {
+      try {
+        // Validate tenant data
+        if (!tenant.property || !tenant.user) {
+          console.warn(`⚠️  Skipping tenant ${tenant._id}: Missing property or user reference`);
+          skipped += 1;
+          continue;
+        }
 
-  const propertyIds = properties.map(p => p._id);
-  const overdueInvoices = await Invoice.find({
-    property: { $in: propertyIds },
-    status: { $in: ['pending', 'overdue'] }
-  }).populate({ path: 'tenant', populate: { path: 'user', select: 'name email' } });
+        if (!tenant.monthlyRent || tenant.monthlyRent <= 0) {
+          console.warn(`⚠️  Skipping tenant ${tenant._id}: Invalid monthly rent (${tenant.monthlyRent})`);
+          skipped += 1;
+          continue;
+        }
 
-  let updated = 0;
+        // Check for duplicate invoice
+        const exists = await Invoice.findOne({ tenant: tenant._id, billingMonth }).lean();
+        if (exists) {
+          console.log(`⏭️  Invoice already exists for tenant ${tenant._id} in ${billingMonth}`);
+          skipped += 1;
+          continue;
+        }
 
-  for (const invoice of overdueInvoices) {
-    if (!invoice.tenant) continue;
-    const dueDate = dayjs(invoice.dueDate);
-    if (referenceDate.isAfter(dueDate, 'day')) {
-      const daysLate = referenceDate.diff(dueDate, 'day');
-      const lateFeePerDay = invoice.tenant?.lateFeePerDay ?? 0;
-      const lateFee = daysLate * lateFeePerDay;
+        // Generate invoice
+        const dueDate = normalizeDueDate(tenant.dueDayOfMonth, referenceDate);
+        const invoice = await Invoice.create({
+          tenant: tenant._id,
+          property: tenant.property._id,
+          billingMonth,
+          invoiceNumber: buildInvoiceNumber(tenant._id, billingMonth),
+          baseAmount: tenant.monthlyRent,
+          lateFee: 0,
+          totalAmount: tenant.monthlyRent,
+          dueDate,
+          status: 'pending'
+        });
 
-      if (invoice.lateFee !== lateFee || invoice.status !== 'overdue') {
-        invoice.lateFee = lateFee;
-        invoice.totalAmount = invoice.baseAmount + lateFee;
-        invoice.status = 'overdue';
-        await invoice.save();
-        updated += 1;
+        created += 1;
+        console.log(`✓ Generated invoice ${invoice.invoiceNumber} for tenant ${tenant._id}`);
+
+        // Queue notification
+        if (tenant.user?.email) {
+          notificationTargets.push({
+            to: tenant.user.email,
+            tenantName: tenant.user.name,
+            subject: `Rent invoice generated for ${billingMonth}`,
+            message: `Invoice ${invoice.invoiceNumber} has been created for ₹${invoice.totalAmount} and is due on ${dayjs(dueDate).format('DD MMM YYYY')}.`
+          });
+        }
+      } catch (err) {
+        const errorMsg = `Error creating invoice for tenant ${tenant._id}: ${err.message}`;
+        console.error(`❌ ${errorMsg}`);
+        errors.push(errorMsg);
       }
     }
-  }
 
-  return { checked: overdueInvoices.length, updated };
-};
-
-export const sendDueReminders = async (daysBeforeDue = 2, referenceDate = dayjs()) => {
-  const properties = await Property.find({
-    isActive: true,
-    autoRemindersEnabled: true
-  }).lean();
-
-  if (!properties.length) {
-    console.log(`📧 No properties with auto-reminders enabled`);
-    return { remindersSent: 0 };
-  }
-
-  const propertyIds = properties.map(p => p._id);
-  const targetDate = referenceDate.add(daysBeforeDue, 'day').startOf('day');
-  const nextDate = targetDate.add(1, 'day');
-  const invoices = await Invoice.find({
-    property: { $in: propertyIds },
-    status: 'pending',
-    dueDate: { $gte: targetDate.toDate(), $lt: nextDate.toDate() }
-  }).populate({ path: 'tenant', populate: { path: 'user', select: 'name email' } });
-
-  for (const invoice of invoices) {
-    if (!invoice.tenant?.user?.email) continue;
-    await sendNotification({
-      to: invoice.tenant.user.email,
-      subject: 'Rent due reminder',
-      message: `Your invoice ${invoice.invoiceNumber} for ${invoice.billingMonth} is due on ${dayjs(invoice.dueDate).format('DD MMM YYYY')}. Please pay ₹${invoice.totalAmount} before the due date.`
-    });
-  }
-
-  return { remindersSent: invoices.length };
-};
-
-export const sendOverdueAlerts = async (referenceDate = dayjs()) => {
-  const overdueInvoices = await Invoice.find({ status: 'overdue' }).populate({ path: 'tenant', populate: { path: 'user', select: 'name email' } });
-  let escalations = 0;
-
-  for (const invoice of overdueInvoices) {
-    if (!invoice.tenant?.user?.email) continue;
-    const daysLate = referenceDate.diff(dayjs(invoice.dueDate), 'day');
-
-    await sendNotification({
-      to: invoice.tenant.user.email,
-      subject: `Overdue rent invoice ${invoice.invoiceNumber}`,
-      message: `Your invoice ${invoice.invoiceNumber} is ${daysLate} day(s) overdue. Current amount due: ₹${invoice.totalAmount}. Please settle immediately.`
-    });
-
-    if (daysLate >= 7 && env.adminEmail) {
-      escalations += 1;
+    // Send notifications
+    console.log(`📧 Sending ${notificationTargets.length} tenant notifications...`);
+    for (const notification of notificationTargets) {
+      try {
+        await sendNotification(notification);
+      } catch (err) {
+        console.error(`❌ Failed to send notification to ${notification.to}: ${err.message}`);
+      }
     }
-  }
 
-  if (env.adminEmail && escalations > 0) {
-    await sendNotification({
-      to: env.adminEmail,
-      subject: 'Overdue rent escalations',
-      message: `${escalations} overdue invoices have been outstanding for 7 or more days. Review and follow up with tenants.`
-    });
-  }
+    // Send admin summary
+    if (env.adminEmail) {
+      try {
+        await sendNotification({
+          to: env.adminEmail,
+          subject: `Monthly rent invoices: ${billingMonth} (${created} created)`,
+          message: `✓ ${created} invoices generated\n⏭️ ${skipped} skipped\n❌ ${errors.length} errors\n\n${errors.length > 0 ? 'Errors:\n' + errors.join('\n') : 'No errors'}`
+        });
+      } catch (err) {
+        console.error(`❌ Failed to send admin notification: ${err.message}`);
+      }
+    }
 
-  return { overdueAlertsSent: overdueInvoices.length, escalations };
+    return { billingMonth, created, skipped, errors, notificationsSent: notificationTargets.length };
+  } catch (err) {
+    console.error('❌ Fatal error in generateMonthlyRent:', err);
+    throw err;
+  }
 };
 
-export const sendOccupancySummary = async () => {
-  const properties = await Property.find().populate({ path: 'manager', select: 'name email' }).lean();
+/**
+ * Apply late fees to overdue invoices
+ */
+export const applyLateFees = async (referenceDate = dayjs()) => {
+  try {
+    console.log(`💰 Starting late fee calculation`);
 
-  let totalBeds = 0;
-  let occupiedBeds = 0;
+    const properties = await Property.find({
+      isActive: true,
+      autoLateFeesEnabled: true
+    }).lean();
 
-  const lines = properties.map((property) => {
-    const propertyTotalBeds = property.floors.reduce(
-      (floorSum, floor) => floorSum + floor.rooms.reduce(
-        (roomSum, room) => roomSum + room.beds.length,
-        0
-      ),
-      0
-    );
-    const propertyOccupiedBeds = property.floors.reduce(
-      (floorSum, floor) => floorSum + floor.rooms.reduce(
-        (roomSum, room) => roomSum + room.beds.filter((bed) => bed.status === 'occupied').length,
-        0
-      ),
-      0
-    );
+    if (!properties.length) {
+      console.log(`⚠️  No properties with auto-late-fees enabled`);
+      return { checked: 0, updated: 0, errors: [] };
+    }
 
-    totalBeds += propertyTotalBeds;
-    occupiedBeds += propertyOccupiedBeds;
+    console.log(`✓ Found ${properties.length} properties with auto-late-fees`);
+    const propertyIds = properties.map(p => p._id);
 
-    const managerNote = property.manager?.email ? `Manager: ${property.manager.email}` : 'Manager: N/A';
-    return `${property.name} — ${propertyOccupiedBeds}/${propertyTotalBeds} occupied (${managerNote})`;
-  });
+    const overdueInvoices = await Invoice.find({
+      property: { $in: propertyIds },
+      status: { $in: ['pending', 'overdue'] }
+    }).populate({ path: 'tenant', populate: { path: 'user', select: 'name email' } });
 
-  const message = `Occupancy summary:\nTotal properties: ${properties.length}\nTotal beds: ${totalBeds}\nOccupied beds: ${occupiedBeds}\nVacant beds: ${totalBeds - occupiedBeds}\n\n${lines.join('\n')}`;
+    console.log(`✓ Found ${overdueInvoices.length} invoices to check`);
 
-  const recipients = [];
-  if (env.adminEmail) recipients.push(env.adminEmail);
-  properties.forEach((property) => {
-    if (property.manager?.email) recipients.push(property.manager.email);
-  });
+    let updated = 0;
+    let errors = [];
 
-  const uniqueRecipients = Array.from(new Set(recipients));
+    for (const invoice of overdueInvoices) {
+      try {
+        if (!invoice.tenant) continue;
 
-  for (const recipient of uniqueRecipients) {
-    await sendNotification({
-      to: recipient,
-      subject: 'Daily occupancy summary',
-      message
-    });
+        const dueDate = dayjs(invoice.dueDate);
+        if (referenceDate.isAfter(dueDate, 'day')) {
+          const daysLate = referenceDate.diff(dueDate, 'day');
+          const lateFeePerDay = invoice.tenant?.lateFeePerDay ?? 0;
+          const newLateFee = daysLate * lateFeePerDay;
+
+          // Only update if fee changed or status needs update
+          if (invoice.lateFee !== newLateFee || invoice.status !== 'overdue') {
+            invoice.lateFee = newLateFee;
+            invoice.totalAmount = invoice.baseAmount + newLateFee;
+            invoice.status = 'overdue';
+            await invoice.save();
+            updated += 1;
+            console.log(`✓ Updated late fees for invoice ${invoice.invoiceNumber}: ₹${newLateFee}`);
+          }
+        }
+      } catch (err) {
+        const errorMsg = `Error updating invoice ${invoice?.invoiceNumber}: ${err.message}`;
+        console.error(`❌ ${errorMsg}`);
+        errors.push(errorMsg);
+      }
+    }
+
+    return { checked: overdueInvoices.length, updated, errors };
+  } catch (err) {
+    console.error('❌ Fatal error in applyLateFees:', err);
+    throw err;
   }
+};
 
-  return { totalProperties: properties.length, totalBeds, occupiedBeds, recipients: uniqueRecipients.length };
+/**
+ * Send payment reminders for invoices due in X days
+ */
+export const sendDueReminders = async (daysBeforeDue = 2, referenceDate = dayjs()) => {
+  try {
+    console.log(`📧 Starting due payment reminders (${daysBeforeDue} days before due)`);
+
+    const properties = await Property.find({
+      isActive: true,
+      autoRemindersEnabled: true
+    }).lean();
+
+    if (!properties.length) {
+      console.log(`⚠️  No properties with auto-reminders enabled`);
+      return { remindersSent: 0, errors: [] };
+    }
+
+    const propertyIds = properties.map(p => p._id);
+
+    const targetDate = referenceDate.add(daysBeforeDue, 'day').startOf('day');
+    const nextDate = targetDate.add(1, 'day');
+
+    const invoices = await Invoice.find({
+      property: { $in: propertyIds },
+      status: 'pending',
+      dueDate: { $gte: targetDate.toDate(), $lt: nextDate.toDate() }
+    }).populate({ path: 'tenant', populate: { path: 'user', select: 'name email' } });
+
+    let remindersSent = 0;
+    let errors = [];
+
+    for (const invoice of invoices) {
+      try {
+        if (!invoice.tenant?.user?.email) {
+          console.warn(`⚠️  Skipping reminder: No email for invoice ${invoice.invoiceNumber}`);
+          continue;
+        }
+
+        await sendNotification({
+          to: invoice.tenant.user.email,
+          subject: 'Rent due reminder',
+          message: `Your invoice ${invoice.invoiceNumber} for ${invoice.billingMonth} is due on ${dayjs(invoice.dueDate).format('DD MMM YYYY')}. Please pay ₹${invoice.totalAmount}.`
+        });
+
+        remindersSent++;
+      } catch (err) {
+        const errorMsg = `Failed reminder for ${invoice.invoiceNumber}: ${err.message}`;
+        console.error(`❌ ${errorMsg}`);
+        errors.push(errorMsg);
+      }
+    }
+
+    return { remindersSent, errors };
+  } catch (err) {
+    console.error('❌ Fatal error in sendDueReminders:', err);
+    throw err;
+  }
+};
+/**
+ * Send overdue alerts and escalations
+ */
+export const sendOverdueAlerts = async (referenceDate = dayjs()) => {
+  try {
+    console.log(`🚨 Starting overdue alert notifications`);
+
+    const overdueInvoices = await Invoice.find({ status: 'overdue' }).populate({ path: 'tenant', populate: { path: 'user', select: 'name email' } });
+
+    console.log(`✓ Found ${overdueInvoices.length} overdue invoices`);
+
+    let alertsSent = 0;
+    let escalations = 0;
+    let errors = [];
+
+    for (const invoice of overdueInvoices) {
+      try {
+        if (!invoice.tenant?.user?.email) continue;
+
+        const daysLate = referenceDate.diff(dayjs(invoice.dueDate), 'day');
+
+        await sendNotification({
+          to: invoice.tenant.user.email,
+          subject: `Overdue rent invoice ${invoice.invoiceNumber}`,
+          message: `Your invoice ${invoice.invoiceNumber} is ${daysLate} day(s) overdue. Current amount due: ₹${invoice.totalAmount}. Please settle immediately.`
+        });
+
+        alertsSent += 1;
+        console.log(`✓ Overdue alert sent for invoice ${invoice.invoiceNumber} (${daysLate} days late)`);
+
+        // Escalate if 7+ days overdue
+        if (daysLate >= 7) {
+          escalations += 1;
+        }
+      } catch (err) {
+        const errorMsg = `Failed to send overdue alert for invoice ${invoice?.invoiceNumber}: ${err.message}`;
+        console.error(`❌ ${errorMsg}`);
+        errors.push(errorMsg);
+      }
+    }
+
+    // Send escalation summary to admin
+    if (env.adminEmail && escalations > 0) {
+      try {
+        await sendNotification({
+          to: env.adminEmail,
+          subject: `⚠️ Overdue rent escalations: ${escalations} invoices`,
+          message: `${escalations} overdue invoices have been outstanding for 7 or more days. Review and follow up with tenants immediately.`
+        });
+        console.log(`✓ Escalation notification sent to admin`);
+      } catch (err) {
+        console.error(`❌ Failed to send escalation email: ${err.message}`);
+      }
+    }
+
+    return { alertsSent, escalations, errors };
+  } catch (err) {
+    console.error('❌ Fatal error in sendOverdueAlerts:', err);
+    throw err;
+  }
+};
+
+/**
+ * Send daily occupancy summary to managers and admin
+ */
+export const sendOccupancySummary = async () => {
+  try {
+    console.log(`📊 Starting occupancy summary report`);
+
+    const properties = await Property.find().populate({ path: 'manager', select: 'name email' }).lean();
+
+    console.log(`✓ Found ${properties.length} properties`);
+
+    let totalBeds = 0;
+    let occupiedBeds = 0;
+    const lines = [];
+    let errors = [];
+
+    for (const property of properties) {
+      try {
+        const propertyTotalBeds = property.floors.reduce(
+          (floorSum, floor) => floorSum + floor.rooms.reduce(
+            (roomSum, room) => roomSum + room.beds.length,
+            0
+          ),
+          0
+        );
+
+        const propertyOccupiedBeds = property.floors.reduce(
+          (floorSum, floor) => floorSum + floor.rooms.reduce(
+            (roomSum, room) => roomSum + room.beds.filter((bed) => bed.status === 'occupied').length,
+            0
+          ),
+          0
+        );
+
+        totalBeds += propertyTotalBeds;
+        occupiedBeds += propertyOccupiedBeds;
+
+        const occupancyRate = propertyTotalBeds > 0 ? Math.round((propertyOccupiedBeds / propertyTotalBeds) * 100) : 0;
+        const managerNote = property.manager?.email ? `Manager: ${property.manager.email}` : 'Manager: N/A';
+        lines.push(`${property.name} — ${propertyOccupiedBeds}/${propertyTotalBeds} occupied (${occupancyRate}%) - ${managerNote}`);
+      } catch (err) {
+        const errorMsg = `Error calculating occupancy for property ${property.name}: ${err.message}`;
+        console.error(`❌ ${errorMsg}`);
+        errors.push(errorMsg);
+      }
+    }
+
+    const occupancyRate = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
+    const message = `Occupancy Summary:\n\nTotal Properties: ${properties.length}\nTotal Beds: ${totalBeds}\nOccupied: ${occupiedBeds}\nVacant: ${totalBeds - occupiedBeds}\nOccupancy Rate: ${occupancyRate}%\n\n${lines.join('\n')}`;
+
+    // Collect recipients
+    const recipients = [];
+    if (env.adminEmail) recipients.push(env.adminEmail);
+    properties.forEach((property) => {
+      if (property.manager?.email) recipients.push(property.manager.email);
+    });
+
+    const uniqueRecipients = Array.from(new Set(recipients));
+    console.log(`✓ Will send to ${uniqueRecipients.length} recipients`);
+
+    let sentCount = 0;
+
+    for (const recipient of uniqueRecipients) {
+      try {
+        await sendNotification({
+          to: recipient,
+          subject: 'Daily occupancy summary',
+          message
+        });
+        sentCount += 1;
+        console.log(`✓ Occupancy summary sent to ${recipient}`);
+      } catch (err) {
+        const errorMsg = `Failed to send occupancy summary to ${recipient}: ${err.message}`;
+        console.error(`❌ ${errorMsg}`);
+        errors.push(errorMsg);
+      }
+    }
+
+    return { 
+      totalProperties: properties.length, 
+      totalBeds, 
+      occupiedBeds, 
+      occupancyRate,
+      recipients: sentCount, 
+      errors 
+    };
+  } catch (err) {
+    console.error('❌ Fatal error in sendOccupancySummary:', err);
+    throw err;
+  }
 };
