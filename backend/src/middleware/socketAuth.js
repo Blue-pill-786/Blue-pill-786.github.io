@@ -3,8 +3,9 @@
  * Verifies JWT tokens for WebSocket connections
  */
 
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+import jwt from 'jsonwebtoken';
+import { User } from '../models/User.js';
+import { env } from '../config/env.js';
 
 const socketAuth = async (socket, next) => {
   try {
@@ -21,13 +22,38 @@ const socketAuth = async (socket, next) => {
     }
 
     // Verify JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, env.jwtSecret);
 
     if (decoded.id !== userId) {
       return next(new Error('Token does not match user ID'));
     }
 
-    // Optional: Verify user still exists and is active
+    // Verify user still exists and is active
+    const user = await User.findById(userId);
+    if (!user) {
+      return next(new Error('User not found'));
+    }
+
+    if (!user.isActive) {
+      return next(new Error('User account is inactive'));
+    }
+
+    if (user.isAccountLocked?.()) {
+      return next(new Error('User account is locked'));
+    }
+
+    // Attach user to socket
+    socket.userId = userId;
+    socket.organizationId = organizationId;
+    socket.user = user;
+
+    next();
+  } catch (err) {
+    next(new Error(`Authentication failed: ${err.message}`));
+  }
+};
+
+export default socketAuth;
     const user = await User.findById(userId);
     if (!user) {
       return next(new Error('User not found'));

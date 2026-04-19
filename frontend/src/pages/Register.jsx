@@ -1,126 +1,66 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { api } from "../lib/api";
+
+const registrationOptions = [
+  {
+    title: "PG Owner / Admin",
+    description:
+      "Create your organization, owner account, and start managing properties, tenants, and billing.",
+    cta: "Register as Owner",
+    path: "/register/admin",
+    accent: "from-cyan-400 to-blue-500",
+  },
+  {
+    title: "Tenant",
+    description:
+      "Create a tenant login account. Property, room, and profile details will be assigned by the PG owner later.",
+    cta: "Register as Tenant",
+    path: "/register/tenant",
+    accent: "from-emerald-400 to-teal-500",
+  },
+];
 
 const RegisterPage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
-
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    password: ""
-  });
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!form.name || !form.email || !form.password) {
-      setError("All fields are required.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      await api.post('/auth/register', form);
-      const user = await login(form.email, form.password);
-
-      if (user.role === 'tenant') {
-        navigate('/tenant');
-      } else {
-        navigate('/admin');
-      }
-    } catch (err) {
-      const msg = err.response?.data?.message;
-      setError(msg || "Registration failed");
-
-      if (msg === "User already exists") {
-        setError("Account exists. Please login instead.");
-        navigate("/login");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-grid px-4 py-10">
-      <div className="w-full max-w-lg rounded-[2rem] border border-cyan-500/10 bg-slate-950/95 p-8 shadow-float">
-        <div className="mb-8 text-center">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/70">Create account</p>
-          <h1 className="mt-3 text-3xl font-semibold text-white">Register for PG Ops</h1>
-          <p className="mt-2 text-sm text-slate-400">Sign up to manage tenants, properties and billing in style.</p>
-        </div>
-
-        {error && <div className="mb-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
-
-        <div className="mb-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-          <p className="text-sm text-emerald-200">
-            💡 <strong>New:</strong> Create your organization account with our new SaaS platform! Get a 30-day free trial.
+      <div className="w-full max-w-5xl rounded-[2rem] border border-cyan-500/10 bg-slate-950/95 p-8 shadow-float">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/70">Choose account type</p>
+          <h1 className="mt-3 text-3xl font-semibold text-white">Who is registering?</h1>
+          <p className="mt-3 text-sm text-slate-400">
+            Owners and tenants use different onboarding flows so the app can set up the right data from day one.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate('/signup')}
-            className="mt-3 w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition"
-          >
-            Start SaaS Signup →
-          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <input
-            name="name"
-            value={form.name}
-            placeholder="Name"
-            onChange={handleChange}
-            required
-            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner focus:border-cyan-400"
-          />
-          <input
-            name="email"
-            type="email"
-            value={form.email}
-            placeholder="Email"
-            onChange={handleChange}
-            required
-            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner focus:border-cyan-400"
-          />
-          <input
-            name="password"
-            type="password"
-            value={form.password}
-            placeholder="Password"
-            onChange={handleChange}
-            required
-            className="w-full rounded-3xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-slate-100 shadow-inner focus:border-cyan-400"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-3xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.01] hover:shadow-[0_20px_50px_rgba(56,189,248,0.35)]"
-          >
-            {loading ? "Registering..." : "Register (Legacy)"}
-          </button>
-        </form>
+        <div className="mt-10 grid gap-6 md:grid-cols-2">
+          {registrationOptions.map((option) => (
+            <button
+              key={option.path}
+              type="button"
+              onClick={() => navigate(option.path)}
+              className="rounded-[1.75rem] border border-slate-800 bg-slate-900/80 p-7 text-left transition hover:-translate-y-1 hover:border-cyan-400/40"
+            >
+              <div className={`inline-flex rounded-full bg-gradient-to-r ${option.accent} px-3 py-1 text-xs font-semibold text-slate-950`}>
+                {option.title}
+              </div>
+              <h2 className="mt-5 text-2xl font-semibold text-white">{option.title}</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-400">{option.description}</p>
+              <div className="mt-8">
+                <span className={`inline-flex rounded-2xl bg-gradient-to-r ${option.accent} px-5 py-3 text-sm font-semibold text-slate-950`}>
+                  {option.cta}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
 
-        <p className="mt-4 text-center text-xs text-slate-500">
-          Note: Legacy registration is for backward compatibility. New users should use SaaS signup above.
-        </p>
+        <div className="mt-8 text-center text-sm text-slate-500">
+          Already have an account? Use the login page and sign in with your role-specific credentials.
+        </div>
       </div>
     </div>
   );
 };
+
 export default RegisterPage;

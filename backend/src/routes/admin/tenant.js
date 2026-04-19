@@ -14,7 +14,8 @@ import {
   getTenantStats,
   getExpiringLeases,
   getTenantComplaints,
-  checkRenewalEligibility
+  checkRenewalEligibility,
+  updateBedRent
 } from '../../controllers/tenantController.js';
 import { protect, authorize } from '../../middleware/auth.js';
 import ResponseFormatter from '../../utils/responseFormatter.js';
@@ -136,6 +137,25 @@ router.post(
       next(err);
     }
   }
+);
+
+
+/* ================= BED MANAGEMENT ================= */
+
+/**
+ * Update bed rent
+ * PUT /api/admin/tenants/beds/rent
+ */
+router.put(
+  '/beds/rent',
+  [
+    body('propertyId').notEmpty().isMongoId(),
+    body('floorName').notEmpty().trim(),
+    body('roomNumber').notEmpty().trim(),
+    body('bedLabel').notEmpty().trim(),
+    body('rent').isFloat({ min: 0 })
+  ],
+  updateBedRent
 );
 
 export default router;

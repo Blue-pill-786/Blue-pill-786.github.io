@@ -1,0 +1,14 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - paragraph [ref=e6]: Welcome back
+    - heading "Login to PG Ops" [level=1] [ref=e7]
+    - paragraph [ref=e8]: Secure access for admins and tenants with a futuristic dashboard feel.
+  - generic [ref=e9]:
+    - textbox "Email" [ref=e10]
+    - textbox "Password" [ref=e11]
+    - button "Sign in" [ref=e12] [cursor=pointer]
+  - generic [ref=e13]:
+    - paragraph [ref=e14]: New here?
+    - generic [ref=e15]:
+      - button "Register as PG Owner" [ref=e16] [cursor=pointer]
+      - button "Register as Tenant" [ref=e17] [cursor=pointer]

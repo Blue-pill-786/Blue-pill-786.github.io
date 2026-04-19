@@ -19,7 +19,7 @@ const router = express.Router();
 /**
  * All admin property routes require authentication
  */
-router.use(protect, authorize('admin', 'manager'));
+router.use(protect, authorize('admin', 'owner', 'manager'));
 
 /* ================= PROPERTY CRUD ================= */
 
@@ -34,10 +34,18 @@ router.post(
     body('code').notEmpty().trim().isLength({ min: 2 }),
     body('address').notEmpty().trim(),
     body('city').notEmpty().trim(),
-    body('state').notEmpty().trim(),
-    body('beds').isInt({ min: 1 }),
-    body('rentPerBed').isFloat({ min: 0 }),
-    body('manager').optional().isMongoId()
+    body('state').optional().trim(),
+    body('manager').optional().isMongoId(),
+    body('floors').optional().isArray(),
+    body('floors.*.name').optional().trim().notEmpty(),
+    body('floors.*.rooms').optional().isArray(),
+    body('floors.*.rooms.*.number').optional().trim().notEmpty(),
+    body('floors.*.rooms.*.beds').optional().isArray(),
+    body('floors.*.rooms.*.beds.*.label').optional().trim().notEmpty(),
+    body('floors.*.rooms.*.beds.*.monthlyRent').optional().isFloat({ min: 0 }),
+    body('autoInvoicingEnabled').optional().isBoolean(),
+    body('autoLateFeesEnabled').optional().isBoolean(),
+    body('autoRemindersEnabled').optional().isBoolean()
   ],
   createProperty
 );

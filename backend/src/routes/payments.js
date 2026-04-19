@@ -87,6 +87,24 @@ router.post(
 
 /**
  * Create invoice for tenant
+ * POST /api/payments/admin (frontend alias)
+ * POST /api/payments/admin/create (internal)
+ * Body: { tenantId, billingMonth, baseAmount, charges }
+ */
+router.post(
+  '/admin',
+  authorize('admin', 'manager', 'staff'),
+  [
+    body('tenantId').notEmpty().isMongoId(),
+    body('billingMonth').notEmpty().matches(/^\d{4}-\d{2}$/),
+    body('baseAmount').isFloat({ min: 0 }),
+    body('charges').optional().isArray()
+  ],
+  paymentController.createInvoice
+);
+
+/**
+ * Create invoice for tenant (legacy route)
  * POST /api/payments/admin/create
  * Body: { tenantId, billingMonth, baseAmount, charges }
  */

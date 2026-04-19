@@ -18,7 +18,13 @@ import {
   getSubscriptionStatus,
   applyCoupon,
   renewSubscription,
-  getAPIUsage
+  getAPIUsage,
+  getPaymentMethods,
+  createPaymentMethod,
+  setDefaultPaymentMethod,
+  deletePaymentMethod,
+  getTeamMembers,
+  inviteTeamMember
 } from '../controllers/saasController.prod.js';
 import { protect, authorize } from '../middleware/auth.js';
 import ResponseFormatter from '../utils/responseFormatter.js';
@@ -30,15 +36,16 @@ const router = express.Router();
 /**
  * Sign up new organization
  * POST /api/saas/signup
- * Body: { organizationName, email, password, tier }
+ * Body: { organizationName, ownerName, ownerEmail, ownerPassword, companyPhone }
  */
 router.post(
   '/signup',
   [
     body('organizationName').notEmpty().trim().isLength({ min: 3 }),
-    body('email').isEmail().normalizeEmail(),
-    body('password').isLength({ min: 6 }),
-    body('tier').optional().isIn(['free', 'startup', 'professional', 'enterprise'])
+    body('ownerName').notEmpty().trim().isLength({ min: 2 }),
+    body('ownerEmail').isEmail().normalizeEmail(),
+    body('ownerPassword').isLength({ min: 8 }),
+    body('companyPhone').optional().isString()
   ],
   signupOrganization
 );
@@ -191,6 +198,91 @@ router.get(
   ],
   getBillingHistory
 );
+
+/* ================= PAYMENT METHODS ================= */
+
+/**
+ * Get payment methods
+ * GET /api/saas/payment-methods
+ */
+router.get('/payment-methods', getPaymentMethods);
+
+/**
+ * Add payment method
+ * POST /api/saas/payment-methods
+ */
+router.post(
+  '/payment-methods',
+  [
+    body('cardholderName').notEmpty().trim(),
+    body('cardNumber').notEmpty(),
+    body('expiryMonth').notEmpty(),
+    body('expiryYear').notEmpty(),
+    body('cvv').notEmpty()
+  ],
+  createPaymentMethod
+);
+
+/**
+ * Set default payment method
+ * PUT /api/saas/payment-methods/:methodId/set-default
+ */
+router.put('/payment-methods/:methodId/set-default', setDefaultPaymentMethod);
+
+/**
+ * Delete payment method
+ * DELETE /api/saas/payment-methods/:methodId
+ */
+router.delete('/payment-methods/:methodId', deletePaymentMethod);
+
+/* ================= TEAM MEMBERS ================= */
+
+/**
+ * Get team members
+ * GET /api/saas/team-members
+ */
+router.get('/team-members', getTeamMembers);
+
+/**
+ * Invite team member
+ * POST /api/saas/invite-member
+ */
+router.post(
+  '/invite-member',
+  authorize('admin', 'owner'),
+  [
+    body('email').isEmail().normalizeEmail(),
+    body('role').isIn(['admin', 'manager', 'staff'])
+  ],
+  inviteTeamMember
+);
+
+/* ================= ROUTE ALIASES FOR FRONTEND COMPATIBILITY ================= */
+
+/**
+ * Alias: GET /api/saas/organization (frontend) -> body
+ */
+router.get('/organization', getOrganization);
+
+/**
+ * Alias: PUT /api/saas/organization (frontend) -> body
+ */
+router.put(
+  '/organization',
+  authorize('admin', 'owner'),
+  [
+    body('name').optional().trim(),
+    body('email').optional().isEmail(),
+    body('phone').optional(),
+    body('address').optional().trim()
+  ],
+  updateOrganization
+);
+
+/**
+ * Alias: GET /api/saas/subscription (frontend) -> body
+ */
+router.get('/subscription', getSubscriptionStatus);
 
 /* ================= ADMIN-ONLY ROUTES ================= */
 

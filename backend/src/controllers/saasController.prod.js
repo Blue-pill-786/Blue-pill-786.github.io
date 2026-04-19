@@ -3,9 +3,11 @@
  */
 
 import { Organization } from '../models/Organization.js';
+import { User } from '../models/User.js';
 import ResponseFormatter from '../utils/responseFormatter.js';
 import { ValidationError, ConflictError, NotFoundError, BadRequestError, UnauthorizedError } from '../utils/errors.js';
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
 
 /**
  * Tier configurations with limits
@@ -121,17 +123,24 @@ export const signupOrganization = async (req, res, next) => {
       throw new BadRequestError('Password must be at least 8 characters');
     }
 
+    const normalizedEmail = ownerEmail.toLowerCase();
+
     // Check if organization already exists
-    const existingOrg = await Organization.findOne({ email: ownerEmail.toLowerCase() });
+    const existingOrg = await Organization.findOne({ email: normalizedEmail });
     if (existingOrg) {
+      throw new ConflictError('Email already registered');
+    }
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
       throw new ConflictError('Email already registered');
     }
 
     // Create organization
     const organization = new Organization({
       name: organizationName,
-      email: ownerEmail.toLowerCase(),
-      billingEmail: ownerEmail.toLowerCase(),
+      email: normalizedEmail,
+      billingEmail: normalizedEmail,
       phone: companyPhone,
       industry,
       tier: 'trial',
@@ -143,17 +152,43 @@ export const signupOrganization = async (req, res, next) => {
 
     await organization.save();
 
+    const ownerUser = await User.create({
+      organization: organization._id,
+      name: ownerName,
+      email: normalizedEmail,
+      password: ownerPassword,
+      phone: companyPhone,
+      role: 'admin',
+      isActive: true,
+    });
+
+    organization.owner = {
+      userId: ownerUser._id,
+      name: ownerUser.name,
+      email: ownerUser.email,
+    };
+    organization.teamMembers = [
+      {
+        userId: ownerUser._id,
+        email: ownerUser.email,
+        role: 'admin',
+      },
+    ];
+
+    await organization.save();
+
     // Generate token
     const token = jwt.sign(
-      { organizationId: organization._id, email: ownerEmail },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { id: ownerUser._id, email: ownerUser.email, organizationId: organization._id },
+      env.jwtSecret,
+      { expiresIn: env.jwtExpiresIn }
     );
 
     return res.json(
       ResponseFormatter.created(
         {
           token,
+          user: ownerUser.toJSON(),
           organization: {
             id: organization._id,
             name: organization.name,
@@ -161,7 +196,7 @@ export const signupOrganization = async (req, res, next) => {
             trialEndDate: organization.trialEndDate,
           },
         },
-        'Organization created. Trial activated for 30 days.'
+        'Organization owner account created. Trial activated for 30 days.'
       )
     );
   } catch (err) {
@@ -522,4 +557,201 @@ export const getAPIUsage = async (req, res, next) => {
 /**
  * Export tier configurations
  */
+
+/**
+ * Get payment methods for organization
+ */
+export const getPaymentMethods = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organization;
+
+    const organization = await Organization.findById(organizationId)
+      .select('paymentMethods')
+      .lean();
+
+    if (!organization) {
+      throw new NotFoundError('Organization', organizationId);
+    }
+
+    const paymentMethods = organization.paymentMethods || [];
+    return res.json(ResponseFormatter.success(paymentMethods, 'Payment methods retrieved'));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Add payment method
+ */
+export const createPaymentMethod = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organization;
+    const { cardholderName, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+
+    if (!cardholderName || !cardNumber || !expiryMonth || !expiryYear || !cvv) {
+      throw new ValidationError('Missing payment method fields', []);
+    }
+
+    const organization = await Organization.findById(organizationId);
+    if (!organization) {
+      throw new NotFoundError('Organization', organizationId);
+    }
+
+    const paymentMethod = {
+      id: Date.now().toString(),
+      cardholderName,
+      last4: cardNumber.slice(-4),
+      expiryMonth,
+      expiryYear,
+      isDefault: organization.paymentMethods?.length === 0,
+      createdAt: new Date(),
+    };
+
+    if (!organization.paymentMethods) {
+      organization.paymentMethods = [];
+    }
+
+    organization.paymentMethods.push(paymentMethod);
+    await organization.save();
+
+    return res.json(
+      ResponseFormatter.created(paymentMethod, 'Payment method added successfully')
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Set default payment method
+ */
+export const setDefaultPaymentMethod = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organization;
+    const { methodId } = req.params;
+
+    const organization = await Organization.findById(organizationId);
+    if (!organization) {
+      throw new NotFoundError('Organization', organizationId);
+    }
+
+    const paymentMethods = organization.paymentMethods || [];
+    const methodIndex = paymentMethods.findIndex(m => m.id === methodId);
+
+    if (methodIndex < 0) {
+      throw new NotFoundError('Payment method', methodId);
+    }
+
+    paymentMethods.forEach(m => m.isDefault = false);
+    paymentMethods[methodIndex].isDefault = true;
+
+    organization.paymentMethods = paymentMethods;
+    await organization.save();
+
+    return res.json(
+      ResponseFormatter.updated(paymentMethods[methodIndex], 'Default payment method updated')
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Delete payment method
+ */
+export const deletePaymentMethod = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organization;
+    const { methodId } = req.params;
+
+    const organization = await Organization.findById(organizationId);
+    if (!organization) {
+      throw new NotFoundError('Organization', organizationId);
+    }
+
+    const paymentMethods = organization.paymentMethods || [];
+    const method = paymentMethods.find(m => m.id === methodId);
+
+    if (!method) {
+      throw new NotFoundError('Payment method', methodId);
+    }
+
+    organization.paymentMethods = paymentMethods.filter(m => m.id !== methodId);
+    await organization.save();
+
+    return res.json(ResponseFormatter.deleted('Payment method deleted successfully'));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Get team members
+ */
+export const getTeamMembers = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organization;
+
+    const organization = await Organization.findById(organizationId)
+      .select('teamMembers')
+      .lean();
+
+    if (!organization) {
+      throw new NotFoundError('Organization', organizationId);
+    }
+
+    const teamMembers = organization.teamMembers || [];
+    return res.json(ResponseFormatter.success(teamMembers, 'Team members retrieved'));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Invite team member
+ */
+export const inviteTeamMember = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organization;
+    const { email, role } = req.body;
+
+    if (!email || !role) {
+      throw new ValidationError('Email and role are required', []);
+    }
+
+    if (!['admin', 'manager', 'staff'].includes(role)) {
+      throw new BadRequestError('Invalid role');
+    }
+
+    const organization = await Organization.findById(organizationId);
+    if (!organization) {
+      throw new NotFoundError('Organization', organizationId);
+    }
+
+    const teamMember = {
+      id: Date.now().toString(),
+      email,
+      role,
+      status: 'pending',
+      invitedAt: new Date(),
+      inviteToken: Math.random().toString(36).substring(7),
+    };
+
+    if (!organization.teamMembers) {
+      organization.teamMembers = [];
+    }
+
+    organization.teamMembers.push(teamMember);
+    await organization.save();
+
+    return res.json(
+      ResponseFormatter.created(teamMember, 'Invitation sent successfully')
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+
 export { TIER_CONFIGS };
+

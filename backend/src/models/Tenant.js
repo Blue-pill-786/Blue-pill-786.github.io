@@ -125,10 +125,16 @@ tenantSchema.index({ user: 1 });
 tenantSchema.index({ property: 1 });
 tenantSchema.index({ status: 1 });
 tenantSchema.index({ leaseStartDate: 1 });
+tenantSchema.index({ leaseEndDate: 1 });
+tenantSchema.index({ createdAt: -1 });
 tenantSchema.index(
   { organization: 1, user: 1, property: 1, status: 1 },
   { unique: true, partialFilterExpression: { status: "active" } }
 );
+// Composite indexes for common queries
+tenantSchema.index({ organization: 1, status: 1, leaseEndDate: 1 });
+tenantSchema.index({ property: 1, status: 1 });
+tenantSchema.index({ user: 1, status: 1 });
 
 // Virtual for days remaining in lease
 tenantSchema.virtual('daysRemainingInLease').get(function() {

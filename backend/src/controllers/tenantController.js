@@ -236,7 +236,10 @@ export const getProfile = async (req, res, next) => {
       .lean();
 
     if (!tenant) {
-      throw new NotFoundError('Tenant Profile', userId);
+      return res.status(404).json({
+        success: false,
+        message: 'Your tenant profile has not been assigned yet. Please contact your admin.'
+      });
     }
 
     return res.json(ResponseFormatter.success(tenant, 'Profile retrieved successfully'));
@@ -251,15 +254,43 @@ export const getProfile = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const { emergencyContact, alternatePhone, notifications } = req.body;
+    const {
+      emergencyContactName,
+      emergencyContactPhone,
+      alternatePhone,
+      notifications
+    } = req.body;
 
     const tenant = await Tenant.findOne({ user: userId, status: 'active' });
-    if (!tenant) throw new NotFoundError('Tenant Profile', userId);
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Your tenant profile has not been assigned yet. Please contact your admin.'
+      });
+    }
 
-    // Update fields
-    if (emergencyContact) tenant.emergencyContact = emergencyContact;
-    if (alternatePhone) tenant.alternatePhone = alternatePhone;
-    if (notifications) tenant.notifications = { ...tenant.notifications, ...notifications };
+    const currentEmergencyContact =
+      tenant.emergencyContact?.toObject?.() || tenant.emergencyContact || {};
+
+    if (emergencyContactName !== undefined || emergencyContactPhone !== undefined) {
+      tenant.emergencyContact = {
+        ...currentEmergencyContact,
+        ...(emergencyContactName !== undefined
+          ? { name: emergencyContactName.trim() }
+          : {}),
+        ...(emergencyContactPhone !== undefined
+          ? { phone: emergencyContactPhone.trim() }
+          : {}),
+      };
+    }
+
+    if (alternatePhone !== undefined) {
+      tenant.alternatePhone = alternatePhone.trim();
+    }
+
+    if (notifications && typeof notifications === 'object') {
+      tenant.notifications = { ...tenant.notifications, ...notifications };
+    }
 
     await tenant.save();
 
@@ -606,6 +637,46 @@ export const getTenantComplaints = async (req, res, next) => {
         complaints.length,
         'Tenant complaints retrieved'
       )
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+/**
+ * Update bed rent
+ */
+export const updateBedRent = async (req, res, next) => {
+  try {
+    const { propertyId, floorName, roomNumber, bedLabel, rent } = req.body;
+
+    if (!propertyId || !floorName || !roomNumber || !bedLabel || rent === undefined) {
+      throw new ValidationError('Missing required fields', []);
+    }
+
+    if (rent <= 0) {
+      throw new BadRequestError('Rent must be greater than 0');
+    }
+
+    const property = await Property.findById(propertyId);
+    if (!property) {
+      throw new NotFoundError('Property', propertyId);
+    }
+
+    // Find and update bed rent
+    const floor = property.floors.find(f => f.name === floorName);
+    if (!floor) throw new BadRequestError('Floor not found');
+
+    const room = floor.rooms.find(r => r.number === roomNumber);
+    if (!room) throw new BadRequestError('Room not found');
+
+    const bed = room.beds.find(b => b.label === bedLabel);
+    if (!bed) throw new BadRequestError('Bed not found');
+
+    bed.monthlyRent = rent;
+    await property.save();
+
+    return res.json(
+      ResponseFormatter.updated(bed, 'Bed rent updated successfully')
     );
   } catch (err) {
     next(err);

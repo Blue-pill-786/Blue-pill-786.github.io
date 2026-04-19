@@ -50,6 +50,20 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* ================= INDEXES ================= */
+
+invoiceSchema.index({ tenant: 1 });
+invoiceSchema.index({ property: 1 });
+invoiceSchema.index({ status: 1 });
+invoiceSchema.index({ dueDate: 1 });
+invoiceSchema.index({ createdAt: -1 });
+invoiceSchema.index({ invoiceNumber: 1 }, { unique: true });
+// Composite indexes for common queries
+invoiceSchema.index({ tenant: 1, status: 1 });
+invoiceSchema.index({ property: 1, status: 1 });
+invoiceSchema.index({ status: 1, dueDate: 1 }); // For overdue invoices query
+invoiceSchema.index({ createdAt: 1, status: 1 });
+
 /* ================= AUTO LOGIC ================= */
 
 invoiceSchema.pre("validate", function (next) {

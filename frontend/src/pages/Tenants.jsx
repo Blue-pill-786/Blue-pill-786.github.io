@@ -30,9 +30,9 @@ const Tenants = () => {
       try {
         await removeTenant(id);
         setTenants(tenants.filter(t => t._id !== id));
-        alert("Tenant removed successfully");
+        setError("");
       } catch (err) {
-        alert("Failed to remove tenant: " + err.response?.data?.message);
+        setError("Failed to remove tenant: " + (err.response?.data?.message || "Unknown error"));
       }
     }
   };

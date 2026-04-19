@@ -5,6 +5,7 @@
 import mongoose from 'mongoose';
 import { Property } from '../models/Property.js';
 import { Invoice } from '../models/Invoice.js';
+import { Organization } from '../models/Organization.js';
 
 import ResponseFormatter from '../utils/responseFormatter.js';
 import {
@@ -13,6 +14,56 @@ import {
   ValidationError,
   ConflictError
 } from '../utils/errors.js';
+
+const getPropertyStats = (floors = []) => {
+  let totalRooms = 0;
+  let totalBeds = 0;
+  let occupiedBeds = 0;
+  let blockedBeds = 0;
+  let totalMonthlyRent = 0;
+
+  floors.forEach((floor) => {
+    (floor.rooms || []).forEach((room) => {
+      totalRooms += 1;
+
+      (room.beds || []).forEach((bed) => {
+        totalBeds += 1;
+        totalMonthlyRent += Number(bed.monthlyRent) || 0;
+
+        if (bed.status === 'occupied') {
+          occupiedBeds += 1;
+        } else if (bed.status === 'blocked') {
+          blockedBeds += 1;
+        }
+      });
+    });
+  });
+
+  const vacantBeds = Math.max(0, totalBeds - occupiedBeds - blockedBeds);
+  const occupancyRate = totalBeds
+    ? Math.round((occupiedBeds / totalBeds) * 100)
+    : 0;
+
+  return {
+    totalRooms,
+    totalBeds,
+    occupancyStats: {
+      totalBeds,
+      occupiedBeds,
+      vacantBeds,
+      blockedBeds,
+      occupancyRate,
+      lastUpdated: new Date()
+    },
+    financialStats: {
+      totalMonthlyRent,
+      expectedRevenue: totalMonthlyRent,
+      actualRevenue: 0,
+      totalMaintenance: 0,
+      lastUpdated: new Date()
+    }
+  };
+};
 
 /* ================= PROPERTY CRUD ================= */
 
@@ -54,24 +105,46 @@ export const getProperty = async (req, res, next) => {
 
 export const createProperty = async (req, res, next) => {
   try {
-    const { name, code, city, address, totalBeds, totalRooms, totalFloors } = req.body;
+    const { name, code, city, address } = req.body;
 
     if (!name || !code || !city || !address) {
       throw new ValidationError('Missing required fields', []);
     }
 
-    if (totalBeds <= 0 || totalRooms <= 0 || totalFloors <= 0) {
-      throw new BadRequestError('Invalid infrastructure values');
-    }
+    const normalizedCode = code.trim().toUpperCase();
+    const floors = Array.isArray(req.body.floors) ? req.body.floors : [];
+    const stats = getPropertyStats(floors);
 
-    const exists = await Property.findOne({ code: code.toUpperCase() });
+    const exists = await Property.findOne({
+      code: normalizedCode,
+      ...(req.user.organization ? { organization: req.user.organization } : {})
+    });
     if (exists) throw new ConflictError('Property code already exists');
+
+    let ownerId = req.user._id;
+
+    if (req.user.organization) {
+      const organization = await Organization.findById(req.user.organization)
+        .select('owner')
+        .lean();
+
+      ownerId = organization?.owner?.userId || ownerId;
+    }
 
     const property = await Property.create({
       ...req.body,
-      code: code.toUpperCase(),
+      floors,
+      code: normalizedCode,
+      totalRooms: stats.totalRooms,
+      totalBeds: stats.totalBeds,
+      owner: ownerId,
+      ...(req.user.role === 'manager' && !req.body.manager
+        ? { manager: req.user._id }
+        : {}),
       organization: req.user.organization,
-      createdBy: req.user._id
+      createdBy: req.user._id,
+      occupancyStats: stats.occupancyStats,
+      financialStats: stats.financialStats
     });
 
     return res.json(ResponseFormatter.created(property));

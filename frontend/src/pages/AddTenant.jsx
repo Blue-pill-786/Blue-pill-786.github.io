@@ -23,6 +23,8 @@ const AddTenant = () => {
   const [propertyData, setPropertyData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [propertyLoading, setPropertyLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     getProperties()
@@ -142,15 +144,18 @@ const AddTenant = () => {
     e.preventDefault();
 
     if (!form.name || !form.email || !form.propertyId) {
-      return alert("Please fill required fields");
+      setError("Please fill required fields");
+      return;
     }
 
     if (!autoAssign && (!form.floorName || !form.roomNumber || !form.bedLabel)) {
-      return alert("Select floor, room and bed");
+      setError("Select floor, room and bed");
+      return;
     }
 
     if (autoAssign && !selectedAutoBed) {
-      return alert("No vacant beds available");
+      setError("No vacant beds available");
+      return;
     }
 
     const rentAmount = Number(
@@ -158,11 +163,14 @@ const AddTenant = () => {
     );
 
     if (!rentAmount || rentAmount <= 0) {
-      return alert("Invalid rent amount");
+      setError("Invalid rent amount");
+      return;
     }
 
     try {
       setLoading(true);
+      setError("");
+      setSuccess("");
 
       const response = await addTenant({
         ...form,
@@ -173,16 +181,16 @@ const AddTenant = () => {
       });
 
       if (response.isExistingUser) {
-        alert("Tenant assigned successfully");
+        setSuccess("Tenant assigned successfully");
       } else {
-        alert(`Tenant created\nTemp Password: ${response.tempPassword}`);
+        setSuccess(`Tenant created! Temporary Password: ${response.tempPassword}`);
       }
 
-      navigate("/tenants");
+      setTimeout(() => navigate("/tenants"), 2000);
 
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Error");
+      setError(err.response?.data?.message || "Error creating tenant");
     } finally {
       setLoading(false);
     }
@@ -201,7 +209,26 @@ const AddTenant = () => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
 
-          {/* TENANT INFORMATION */}
+          {/* ERROR/SUCCESS ALERTS */}
+          {error && (
+            <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4 text-red-200 flex items-center gap-3">
+              <span className="text-lg">❌</span>
+              <div>
+                <p className="font-semibold">Error</p>
+                <p className="text-sm mt-1">{error}</p>
+              </div>
+            </div>
+          )}
+          
+          {success && (
+            <div className="rounded-lg bg-green-500/10 border border-green-500/50 p-4 text-green-200 flex items-center gap-3">
+              <span className="text-lg">✅</span>
+              <div>
+                <p className="font-semibold">Success</p>
+                <p className="text-sm mt-1">{success}</p>
+              </div>
+            </div>
+          )}
           <div className="rounded-2xl border border-cyan-500/15 bg-slate-900/50 p-6 backdrop-blur-sm">
             <h2 className="text-lg font-semibold text-cyan-100 mb-5">👤 Tenant Information</h2>
             

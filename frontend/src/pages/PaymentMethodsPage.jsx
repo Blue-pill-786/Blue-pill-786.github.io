@@ -1,26 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
 
 const PaymentMethodsPage = () => {
-  const [paymentMethods, setPaymentMethods] = useState([
-    {
-      id: 1,
-      type: 'card',
-      cardType: 'Visa',
-      lastFour: '4242',
-      expiryDate: '12/26',
-      isDefault: true,
-    },
-    {
-      id: 2,
-      type: 'card',
-      cardType: 'Mastercard',
-      lastFour: '8765',
-      expiryDate: '06/27',
-      isDefault: false,
-    },
-  ]);
-
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [newMethod, setNewMethod] = useState({
     cardholderName: '',
     cardNumber: '',
@@ -29,34 +15,77 @@ const PaymentMethodsPage = () => {
     cvv: '',
   });
 
+  // Load payment methods on mount
+  useEffect(() => {
+    loadPaymentMethods();
+  }, []);
+
+  const loadPaymentMethods = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/saas/payment-methods');
+      setPaymentMethods(response.data.data || []);
+      setError('');
+    } catch (err) {
+      setError('Failed to load payment methods');
+      console.error('Load error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAddPaymentMethod = async () => {
     if (!newMethod.cardNumber || !newMethod.expiryMonth || !newMethod.expiryYear || !newMethod.cvv) {
-      alert('Please fill in all card details');
+      setError('Please fill in all card details');
       return;
     }
 
     try {
-      // TODO: Call API to add payment method
-      alert('Payment method added successfully!');
+      setSubmitting(true);
+      const response = await api.post('/saas/payment-methods', {
+        cardholderName: newMethod.cardholderName,
+        cardNumber: newMethod.cardNumber,
+        expiryMonth: newMethod.expiryMonth,
+        expiryYear: newMethod.expiryYear,
+        cvv: newMethod.cvv,
+      });
+      
+      // Add new method to list
+      setPaymentMethods([...paymentMethods, response.data.data]);
       setShowAddForm(false);
       setNewMethod({ cardholderName: '', cardNumber: '', expiryMonth: '', expiryYear: '', cvv: '' });
+      setError('');
     } catch (err) {
-      alert('Failed to add payment method');
+      setError(err.response?.data?.message || 'Failed to add payment method');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleSetDefault = (id) => {
-    setPaymentMethods((prev) =>
-      prev.map((method) => ({
-        ...method,
-        isDefault: method.id === id,
-      }))
-    );
+  const handleSetDefault = async (id) => {
+    try {
+      await api.put(`/saas/payment-methods/${id}/set-default`);
+      setPaymentMethods((prev) =>
+        prev.map((method) => ({
+          ...method,
+          isDefault: method.id === id || method._id === id,
+        }))
+      );
+      setError('');
+    } catch (err) {
+      setError('Failed to set default payment method');
+    }
   };
 
-  const handleRemoveMethod = (id) => {
-    if (confirm('Are you sure you want to remove this payment method?')) {
-      setPaymentMethods((prev) => prev.filter((m) => m.id !== id));
+  const handleRemoveMethod = async (id) => {
+    if (!confirm('Are you sure you want to remove this payment method?')) return;
+
+    try {
+      await api.delete(`/saas/payment-methods/${id}`);
+      setPaymentMethods((prev) => prev.filter((m) => m.id !== id && m._id !== id));
+      setError('');
+    } catch (err) {
+      setError('Failed to remove payment method');
     }
   };
 

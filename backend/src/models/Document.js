@@ -4,7 +4,7 @@
  * Supports versioning, sharing, access tracking
  */
 
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const documentSchema = new mongoose.Schema(
   {
@@ -197,7 +197,7 @@ documentSchema.statics.searchDocuments = function (organizationId, query, filter
 
   if (filters.startDate || filters.endDate) {
     searchQuery.createdAt = {};
-    if (filters.startDate) search Query.createdAt.$gte = new Date(filters.startDate);
+    if (filters.startDate) searchQuery.createdAt.$gte = new Date(filters.startDate);
     if (filters.endDate) searchQuery.createdAt.$lte = new Date(filters.endDate);
   }
 
@@ -206,4 +206,4 @@ documentSchema.statics.searchDocuments = function (organizationId, query, filter
     .lean();
 };
 
-module.exports = mongoose.model('Document', documentSchema);
+export const Document = mongoose.model('Document', documentSchema);

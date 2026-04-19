@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
 
 const AccountSettingsPage = () => {
   const { user } = useAuth();
@@ -16,6 +17,24 @@ const AccountSettingsPage = () => {
     darkMode: true,
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Load preferences on mount
+  useEffect(() => {
+    loadPreferences();
+  }, []);
+
+  const loadPreferences = async () => {
+    try {
+      const response = await api.get('/auth/preferences');
+      if (response.data.data) {
+        setPreferences(response.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load preferences:', err);
+    }
+  };
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -28,11 +47,19 @@ const AccountSettingsPage = () => {
 
   const handleSave = async () => {
     setSaving(true);
+    setError('');
+    setSuccess('');
+    
     try {
-      // TODO: Call API to save settings
-      alert('Settings saved successfully!');
+      await api.put('/auth/profile', formData);
+      
+      // Save preferences
+      await api.put('/auth/preferences', preferences);
+      
+      setSuccess('Settings saved successfully!');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      alert('Failed to save settings');
+      setError(err.response?.data?.message || 'Failed to save settings');
     } finally {
       setSaving(false);
     }

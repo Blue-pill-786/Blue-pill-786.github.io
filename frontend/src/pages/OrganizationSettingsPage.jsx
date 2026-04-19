@@ -1,62 +1,83 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
 
 const OrganizationSettingsPage = () => {
   const [orgData, setOrgData] = useState({
-    name: 'My Property Management',
-    email: 'admin@propertymanage.com',
-    phone: '+91-9876543210',
-    city: 'Mumbai',
-    state: 'Maharashtra',
+    name: '',
+    email: '',
+    phone: '',
+    city: '',
+    state: '',
   });
 
-  const [members, setMembers] = useState([
-    {
-      id: 1,
-      name: 'John Admin',
-      email: 'john@propertymanage.com',
-      role: 'Admin',
-      joinedDate: '2024-01-15',
-      status: 'Active',
-    },
-    {
-      id: 2,
-      name: 'Sarah Manager',
-      email: 'sarah@propertymanage.com',
-      role: 'Manager',
-      joinedDate: '2024-02-20',
-      status: 'Active',
-    },
-    {
-      id: 3,
-      name: 'Mike Staff',
-      email: 'mike@propertymanage.com',
-      role: 'Staff',
-      joinedDate: '2024-03-10',
-      status: 'Active',
-    },
-  ]);
-
-  const [newMember, setNewMember] = useState({ email: '', role: 'Staff' });
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [newMember, setNewMember] = useState({ email: '', role: 'staff' });
   const [saving, setSaving] = useState(false);
+
+  // Load organization data and members
+  useEffect(() => {
+    loadOrgData();
+  }, []);
+
+  const loadOrgData = async () => {
+    try {
+      setLoading(true);
+      const [orgRes, membersRes] = await Promise.all([
+        api.get('/saas/organization'),
+        api.get('/saas/team-members'),
+      ]);
+      
+      setOrgData(orgRes.data.data);
+      setMembers(membersRes.data.data || []);
+      setError('');
+    } catch (err) {
+      setError('Failed to load organization data');
+      console.error('Load error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOrgChange = (e) => {
     const { name, value } = e.target;
     setOrgData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleSaveOrgData = async () => {
+    try {
+      setSaving(true);
+      await api.put('/saas/organization', orgData);
+      setError('');
+      alert('Organization details updated successfully!');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update organization');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAddMember = async () => {
     if (!newMember.email) {
-      alert('Please enter an email address');
+      setError('Please enter an email address');
       return;
     }
 
     try {
       setSaving(true);
-      // TODO: Call API to invite member
+      const response = await api.post('/saas/invite-member', {
+        email: newMember.email,
+        role: newMember.role,
+      });
+      
+      // Add new member to list
+      setMembers([...members, response.data.data]);
+      setNewMember({ email: '', role: 'staff' });
+      setError('');
       alert('Invitation sent successfully!');
-      setNewMember({ email: '', role: 'Staff' });
     } catch (err) {
-      alert('Failed to send invitation');
+      setError(err.response?.data?.message || 'Failed to send invitation');
     } finally {
       setSaving(false);
     }

@@ -41,13 +41,14 @@ router.get('/profile', getProfile);
 /**
  * Update tenant profile
  * PUT /api/tenant/profile
- * Body: { phone, emergencyContact, notes }
+ * Body: { emergencyContactName, emergencyContactPhone, alternatePhone, notes }
  */
 router.put(
   '/profile',
   [
-    body('phone').optional().isMobilePhone(),
-    body('emergencyContact').optional().isLength({ min: 5 }),
+    body('emergencyContactName').optional().trim().isLength({ min: 2 }),
+    body('emergencyContactPhone').optional().trim().isLength({ min: 5 }),
+    body('alternatePhone').optional().trim().isLength({ min: 5 }),
     body('notes').optional().isString()
   ],
   updateProfile

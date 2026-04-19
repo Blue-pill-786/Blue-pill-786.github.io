@@ -133,6 +133,10 @@ propertySchema.index({ owner: 1 });
 propertySchema.index({ manager: 1 });
 propertySchema.index({ city: 1 });
 propertySchema.index({ isActive: 1 });
+// Composite indexes for common queries
+propertySchema.index({ organization: 1, isActive: 1 });
+propertySchema.index({ organization: 1, city: 1 });
+propertySchema.index({ createdAt: -1 });
 
 // Methods
 propertySchema.methods.getOccupancyPercentage = function() {

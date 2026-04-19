@@ -11,9 +11,12 @@ import {
   getMe,
   updateProfile,
   changePassword,
-  logout
+  logout,
+  getUserPreferences,
+  updateUserPreferences
 } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
+import { authLimiter } from '../middleware/rateLim.js';
 import ResponseFormatter from '../utils/responseFormatter.js';
 
 const router = express.Router();
@@ -22,9 +25,11 @@ const router = express.Router();
  * Register new user
  * POST /api/auth/register
  * Body: { name, email, password, role, organization }
+ * Rate limited: 5 attempts per 15 minutes per IP
  */
 router.post(
   '/register',
+  authLimiter,
   [
     body('name').notEmpty().trim().isLength({ min: 3 }),
     body('email').isEmail().normalizeEmail(),
@@ -59,7 +64,7 @@ router.get('/me', protect, getMe);
 /**
  * Update profile (for logged-in users)
  * PUT /api/auth/profile
- * Body: { name, phone, avatar }
+ * Body: { name, phone, avatar, timezone, language }
  */
 router.put(
   '/profile',
@@ -67,7 +72,9 @@ router.put(
   [
     body('name').optional().trim().isLength({ min: 3 }),
     body('phone').optional().isMobilePhone(),
-    body('avatar').optional().isURL()
+    body('avatar').optional().isURL(),
+    body('timezone').optional().isString(),
+    body('language').optional().isString()
   ],
   updateProfile
 );
@@ -93,5 +100,30 @@ router.post(
  * POST /api/auth/logout
  */
 router.post('/logout', protect, logout);
+
+/* ================= USER PREFERENCES ================= */
+
+/**
+ * Get user preferences
+ * GET /api/auth/preferences
+ */
+router.get('/preferences', protect, getUserPreferences);
+
+/**
+ * Update user preferences
+ * PUT /api/auth/preferences
+ * Body: { emailNotifications, smsNotifications, weeklyReport, darkMode }
+ */
+router.put(
+  '/preferences',
+  protect,
+  [
+    body('emailNotifications').optional().isBoolean(),
+    body('smsNotifications').optional().isBoolean(),
+    body('weeklyReport').optional().isBoolean(),
+    body('darkMode').optional().isBoolean()
+  ],
+  updateUserPreferences
+);
 
 export default router;

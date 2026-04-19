@@ -1,22 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
 
 const SubscriptionSettingsPage = () => {
-  const [currentPlan, setCurrentPlan] = useState('Professional');
+  const [subscription, setSubscription] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [billingCycle, setBillingCycle] = useState('monthly');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
-
-  const subscription = {
-    plan: 'Professional',
-    status: 'Active',
-    price: 799,
-    billingCycle: 'monthly',
-    nextBillingDate: '2026-05-13',
-    startDate: '2026-04-13',
-    properties: 5,
-    tenants: 'Unlimited',
-    invoices: 'Advanced',
-  };
 
   const plans = [
     {
@@ -30,7 +21,6 @@ const SubscriptionSettingsPage = () => {
       monthlyPrice: 799,
       yearlyPrice: 7990,
       features: ['Up to 5 properties', 'Unlimited tenants', 'Advanced invoicing', 'Priority support'],
-      current: true,
     },
     {
       name: 'Enterprise',
@@ -40,14 +30,58 @@ const SubscriptionSettingsPage = () => {
     },
   ];
 
-  const handleUpgrade = (plan) => {
-    setSelectedPlan(plan);
-    setShowUpgradeModal(true);
+  // Load subscription data
+  useEffect(() => {
+    loadSubscription();
+  }, []);
+
+  const loadSubscription = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/saas/subscription');
+      setSubscription(response.data.data);
+      setBillingCycle(response.data.data.billingCycle || 'monthly');
+      setError('');
+    } catch (err) {
+      setError('Failed to load subscription details');
+      console.error('Load error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDowngrade = () => {
-    if (confirm('Downgrading will reduce your property and tenant limits. Continue?')) {
+  const handleUpgrade = async (plan) => {
+    setSelectedPlan(plan);
+    try {
+      const response = await api.post('/saas/upgrade-plan', {
+        planName: plan.name,
+        billingCycle,
+      });
+      
+      setSubscription(response.data.data);
+      setShowUpgradeModal(false);
+      alert('Upgrade initiated! This will be processed shortly.');
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to upgrade plan');
+    }
+  };
+
+  const handleDowngrade = async () => {
+    if (!confirm('Downgrading will reduce your property and tenant limits. Continue?')) {
+      return;
+    }
+
+    try {
+      const response = await api.post('/saas/downgrade-plan', {
+        reason: 'User initiated downgrade',
+      });
+      
+      setSubscription(response.data.data);
       alert('Downgrade request submitted. Changes will take effect at the end of your billing cycle.');
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to downgrade plan');
     }
   };
 

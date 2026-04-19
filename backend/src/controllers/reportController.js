@@ -168,6 +168,15 @@ const getReportStats = catchAsync(async (req, res) => {
   res.json(result);
 });
 
+const getMonthlyReport = catchAsync(async (req, res) => {
+  const { organizationId } = req.user;
+
+  // You can later move this into reportService
+  const result = await reportService.getMonthlyReport(organizationId);
+
+  res.json(result);
+});
+
 export default {
   // Phase 3 Custom Reports
   createReport,
@@ -180,4 +189,6 @@ export default {
   exportReport,
   getTemplates,
   getReportStats,
+  getMonthlyReport
 };
+   

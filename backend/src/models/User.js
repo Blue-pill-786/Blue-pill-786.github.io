@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema(
   {
@@ -12,10 +13,10 @@ const userSchema = new mongoose.Schema(
     // Role & Permissions
     role: {
       type: String,
-      enum: ['admin', 'manager', 'staff', 'tenant'],
+      enum: ['admin', 'owner', 'manager', 'staff', 'tenant'],
       default: 'tenant',
     },
-    permissions: [String], // Additional granular permissions
+    permissions: [String],
 
     // Account Status
     isActive: { type: Boolean, default: true },
@@ -31,13 +32,23 @@ const userSchema = new mongoose.Schema(
     failedLoginAttempts: { type: Number, default: 0 },
     lockUntil: Date,
 
+    // Password Reset
+    resetToken: { type: String, select: false },
+    resetTokenExpiry: Date,
+
     // Profile
     avatar: String,
     bio: String,
     timezone: { type: String, default: 'Asia/Kolkata' },
     language: { type: String, default: 'en' },
+    preferences: {
+      emailNotifications: { type: Boolean, default: true },
+      smsNotifications: { type: Boolean, default: false },
+      weeklyReport: { type: Boolean, default: true },
+      darkMode: { type: Boolean, default: true },
+    },
 
-    // Organization (for SaaS)
+    // Organization
     organization: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
@@ -55,7 +66,7 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // Notification Preferences
+    // Notifications
     notifications: {
       emailInvoice: { type: Boolean, default: true },
       emailPayment: { type: Boolean, default: true },
@@ -78,50 +89,54 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Indexes
-userSchema.index({ email: 1 });
-userSchema.index({ organization: 1, email: 1 }, { 
-  unique: true,
-  partialFilterExpression: { organization: { $exists: true } }
-});
+// Indexes (cleaned)
+userSchema.index(
+  { organization: 1, email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { organization: { $exists: true } },
+  }
+);
 userSchema.index({ tenantProfile: 1 });
 userSchema.index({ organization: 1, role: 1 });
 
 // Password hashing
-userSchema.pre('save', async function hashPassword(next) {
+userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
+
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    return next();
+    this.lastPasswordChange = new Date();
+    next();
   } catch (err) {
-    return next(err);
+    next(err);
   }
 });
 
 // Methods
-userSchema.methods.comparePassword = async function comparePassword(candidate) {
+userSchema.methods.comparePassword = async function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-userSchema.methods.isAccountLocked = function() {
+userSchema.methods.isAccountLocked = function () {
   return this.lockUntil && this.lockUntil > Date.now();
 };
 
-userSchema.methods.incFailedLogins = async function() {
+userSchema.methods.incFailedLogins = async function () {
   if (!this.lockUntil || this.lockUntil < Date.now()) {
     this.failedLoginAttempts = 1;
     this.lockUntil = null;
   } else {
     this.failedLoginAttempts += 1;
     if (this.failedLoginAttempts >= 5) {
-      this.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+      this.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
     }
   }
   return this.save();
 };
 
-userSchema.methods.resetFailedLogins = async function() {
+userSchema.methods.resetFailedLogins = async function () {
   this.failedLoginAttempts = 0;
   this.lockUntil = null;
   this.lastLogin = new Date();
@@ -129,83 +144,91 @@ userSchema.methods.resetFailedLogins = async function() {
   return this.save();
 };
 
-userSchema.methods.toJSON = function() {
+userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.verificationToken;
   delete obj.twoFactorSecret;
+  delete obj.resetToken;
   return obj;
 };
 
-/**
- * Generate password reset token
- */
-userSchema.methods.generatePasswordReset = function() {
-  const resetToken = require('crypto').randomBytes(32).toString('hex');
-  this.password = resetToken; // Temporary storage
-  this.passwordChangeRequired = true;
+// Password Reset
+userSchema.methods.generatePasswordReset = function () {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  this.resetToken = hashedToken;
+  this.resetTokenExpiry = new Date(Date.now() + 3600000);
+
   return resetToken;
 };
 
-/**
- * Add login history entry
- */
-userSchema.methods.addLoginHistory = function(ipAddress, userAgent) {
+userSchema.methods.verifyPasswordResetToken = function (token) {
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(token)
+    .digest('hex');
+
+  return (
+    this.resetToken === hashedToken &&
+    this.resetTokenExpiry > new Date()
+  );
+};
+
+userSchema.methods.clearPasswordReset = function () {
+  this.resetToken = undefined;
+  this.resetTokenExpiry = undefined;
+  this.passwordChangeRequired = false;
+  return this.save();
+};
+
+// Login history
+userSchema.methods.addLoginHistory = function (ipAddress, userAgent) {
   this.loginHistory.push({
     timestamp: new Date(),
     ipAddress,
     userAgent,
   });
-  
-  // Keep only last 20 logins
+
   if (this.loginHistory.length > 20) {
     this.loginHistory = this.loginHistory.slice(-20);
   }
-  
+
   return this.save();
 };
 
-/**
- * Check if user has permission
- */
-userSchema.methods.hasPermission = function(permission) {
+// Permissions
+userSchema.methods.hasPermission = function (permission) {
   return this.permissions && this.permissions.includes(permission);
 };
 
-/**
- * Check if user can manage property
- */
-userSchema.methods.canManageProperty = function(propertyId) {
-  return this.managedProperties && this.managedProperties.includes(propertyId);
+userSchema.methods.canManageProperty = function (propertyId) {
+  return (
+    this.managedProperties &&
+    this.managedProperties.includes(propertyId)
+  );
 };
 
-/**
- * Statics - Find by email safely
- */
-userSchema.statics.findByEmail = function(email) {
+// Statics
+userSchema.statics.findByEmail = function (email) {
   return this.findOne({ email: email.toLowerCase() });
 };
 
-/**
- * Statics - Find active users by role
- */
-userSchema.statics.findByRole = function(role) {
+userSchema.statics.findByRole = function (role) {
   return this.find({ role, isActive: true });
 };
 
-/**
- * Statics - Find organization users
- */
-userSchema.statics.findByOrganization = function(organizationId) {
+userSchema.statics.findByOrganization = function (organizationId) {
   return this.find({ organization: organizationId, isActive: true });
 };
 
-/**
- * Pre-delete hook - Remove references
- */
-userSchema.pre('findByIdAndRemove', async function(next) {
-  // Clean up: remove user from related documents
-  // Implementation depends on your needs
+// Cleanup hook
+userSchema.pre('findByIdAndDelete', async function (next) {
   next();
 });
 

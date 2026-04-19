@@ -225,12 +225,17 @@ organizationSchema.set('toObject', { virtuals: true });
 
 /* ================= INDEXES ================= */
 
-organizationSchema.index({ email: 1 });
+organizationSchema.index({ email: 1 }, { unique: true });
 organizationSchema.index({ stripeCustomerId: 1 });
 organizationSchema.index({ status: 1 });
 organizationSchema.index({ tier: 1 });
 organizationSchema.index({ createdAt: -1 });
 organizationSchema.index({ owner: 1 });
+// Composite indexes for common queries
+organizationSchema.index({ status: 1, createdAt: -1 });
+organizationSchema.index({ tier: 1, status: 1 });
+organizationSchema.index({ isDeleted: 1, status: 1 });
+organizationSchema.index({ 'owner.userId': 1 });
 
 /* ================= METHODS ================= */
 

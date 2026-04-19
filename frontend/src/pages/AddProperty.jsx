@@ -17,6 +17,8 @@ const AddProperty = () => {
   });
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -132,7 +134,8 @@ const AddProperty = () => {
     e.preventDefault();
 
     if (!form.name || !form.code || !form.city || !form.address) {
-      return alert("All property fields are required");
+      setError("All property fields are required");
+      return;
     }
 
     const hasInvalidFloor = form.floors.some(
@@ -146,22 +149,25 @@ const AddProperty = () => {
     );
 
     if (hasInvalidFloor) {
-      return alert("Please fill all floor, room, and bed labels");
+      setError("Please fill all floor, room, and bed labels");
+      return;
     }
 
     setLoading(true);
+    setError("");
+    setSuccess("");
 
     try {
       await api.post("/admin/properties", form);
 
-      alert("Property created successfully");
+      setSuccess("Property created successfully");
 
-      navigate("/properties");
+      setTimeout(() => navigate("/properties"), 2000);
 
     } catch (err) {
       console.error("ERROR:", err.response?.data);
 
-      alert(err.response?.data?.message || "Failed to create property");
+      setError(err.response?.data?.message || "Failed to create property");
 
     } finally {
       setLoading(false);
@@ -178,6 +184,27 @@ const AddProperty = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+
+          {/* ERROR/SUCCESS ALERTS */}
+          {error && (
+            <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4 text-red-200 flex items-center gap-3">
+              <span className="text-lg">❌</span>
+              <div>
+                <p className="font-semibold">Error</p>
+                <p className="text-sm mt-1">{error}</p>
+              </div>
+            </div>
+          )}
+          
+          {success && (
+            <div className="rounded-lg bg-green-500/10 border border-green-500/50 p-4 text-green-200 flex items-center gap-3">
+              <span className="text-lg">✅</span>
+              <div>
+                <p className="font-semibold">Success</p>
+                <p className="text-sm mt-1">{success}</p>
+              </div>
+            </div>
+          )}
 
           {/* BASIC INFORMATION SECTION */}
           <div className="rounded-2xl border border-cyan-500/15 bg-slate-900/50 p-6 backdrop-blur-sm">

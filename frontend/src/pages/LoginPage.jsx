@@ -51,6 +51,26 @@ const LoginPage = () => {
             Sign in
           </button>
         </form>
+
+        <div className="mt-6 space-y-3 text-center">
+          <p className="text-xs uppercase tracking-[0.25em] text-slate-500">New here?</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => navigate('/register/admin')}
+              className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40"
+            >
+              Register as PG Owner
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/register/tenant')}
+              className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400/40"
+            >
+              Register as Tenant
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

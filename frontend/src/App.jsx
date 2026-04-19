@@ -7,6 +7,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 /* ================= PUBLIC PAGES ================= */
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/Register";
+import TenantRegisterPage from "./pages/TenantRegisterPage";
 import SaaSSignup from "./pages/SaaSSignup";
 import PricingPage from "./pages/PricingPage";
 
@@ -43,8 +44,16 @@ import ReportBuilder from "./pages/ReportBuilder";
 import ReportView from "./pages/ReportView";
 
 /* ================= ROLE CONSTANTS ================= */
-const ADMIN_ROLES = ["admin", "manager", "staff"];
+const ADMIN_ROLES = ["admin", "owner", "manager", "staff"];
+const PROPERTY_CREATOR_ROLES = ["admin", "owner", "manager"];
 const TENANT_ROLE = ["tenant"];
+
+/* ================= ROUTE WRAPPER WITH ERROR BOUNDARY ================= */
+const RouteWithErrorBoundary = ({ children }) => (
+  <ErrorBoundary>
+    {children}
+  </ErrorBoundary>
+);
 
 /* ================= PROTECTED ROUTE ================= */
 const ProtectedRoute = ({ children, roles }) => {
@@ -84,6 +93,7 @@ const HomeRedirect = () => {
   const roleRedirect = {
     tenant: "/tenant",
     admin: "/admin",
+    owner: "/admin",
     manager: "/admin",
     staff: "/admin",
   };
@@ -100,6 +110,8 @@ const App = () => {
           {/* PUBLIC ROUTES */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/register/admin" element={<SaaSSignup />} />
+          <Route path="/register/tenant" element={<TenantRegisterPage />} />
           <Route path="/signup" element={<SaaSSignup />} />
           <Route path="/pricing" element={<PricingPage />} />
 
@@ -118,9 +130,11 @@ const App = () => {
           <Route
             path="admin"
             element={
-              <ProtectedRoute roles={ADMIN_ROLES}>
-                <AdminDashboard />
-              </ProtectedRoute>
+              <RouteWithErrorBoundary>
+                <ProtectedRoute roles={ADMIN_ROLES}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              </RouteWithErrorBoundary>
             }
           />
 
@@ -154,16 +168,18 @@ const App = () => {
           <Route
             path="invoices"
             element={
-              <ProtectedRoute roles={ADMIN_ROLES}>
-                <InvoiceManagement />
-              </ProtectedRoute>
+              <RouteWithErrorBoundary>
+                <ProtectedRoute roles={ADMIN_ROLES}>
+                  <InvoiceManagement />
+                </ProtectedRoute>
+              </RouteWithErrorBoundary>
             }
           />
 
           <Route
             path="add-property"
             element={
-              <ProtectedRoute roles={["admin"]}>
+              <ProtectedRoute roles={PROPERTY_CREATOR_ROLES}>
                 <AddProperty />
               </ProtectedRoute>
             }
@@ -172,7 +188,7 @@ const App = () => {
           <Route
             path="edit-property/:id"
             element={
-              <ProtectedRoute roles={["admin", "manager"]}>
+              <ProtectedRoute roles={PROPERTY_CREATOR_ROLES}>
                 <EditProperty />
               </ProtectedRoute>
             }
@@ -218,9 +234,11 @@ const App = () => {
           <Route
             path="payments"
             element={
-              <ProtectedRoute roles={TENANT_ROLE}>
-                <PaymentPage />
-              </ProtectedRoute>
+              <RouteWithErrorBoundary>
+                <ProtectedRoute roles={TENANT_ROLE}>
+                  <PaymentPage />
+                </ProtectedRoute>
+              </RouteWithErrorBoundary>
             }
           />
 

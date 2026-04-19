@@ -18,10 +18,12 @@
     "express-validator": "^7.2.0",
     "helmet": "^7.1.0",
     "ioredis": "^5.4.1",
+    "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.6.2",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
+    "stripe": "^14.10.0",
     "twilio": "^5.3.4"
   },
   "devDependencies": {
