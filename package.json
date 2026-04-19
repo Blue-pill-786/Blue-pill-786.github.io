@@ -1,0 +1,21 @@
+{
+  "name": "pg-management-suite",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "build:frontend": "npm --workspace frontend run build"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "lucide-react": "^1.8.0",
+    "mongodb": "^7.1.1",
+    "morgan": "^1.10.1",
+    "stripe": "^22.0.1"
+  }
+}

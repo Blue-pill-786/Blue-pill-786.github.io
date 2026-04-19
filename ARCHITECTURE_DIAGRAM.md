@@ -1,0 +1,690 @@
+# System Architecture & Data Flow Diagram
+
+**Status:** Phase 1 Complete + Phase 2 Advanced Search Ready  
+**Last Updated:** 2024-12-20
+
+---
+
+## 🏗️ High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         CLIENT BROWSER                            │
+│                                                                   │
+│  ┌─────────────────┐      ┌──────────────────┐                  │
+│  │   React App     │      │   Socket.io      │                  │
+│  │   (Port 5173)   │      │   Client         │                  │
+│  └────────┬────────┘      └────────┬─────────┘                  │
+│           │                        │                            │
+│           └────────────┬───────────┘                            │
+│                        │ WebSocket + REST API                  │
+└────────────────────────┼──────────────────────────────────────┘
+                         │
+        ┌────────────────┼──────────────────┐
+        │                │                  │
+   ┌────▼─────────────────▼────────────────▼────────┐
+   │          EXPRESS.JS SERVER                     │
+   │          (Backend - Port 5000)                 │
+   │                                                │
+   │  ┌──────────────────────────────────────────┐ │
+   │  │         API Routes & Controllers         │ │
+   │  │                                          │ │
+   │  │  ✅ Notifications Routes (Phase 1)       │ │
+   │  │  ✅ Documents Routes (Phase 1)           │ │
+   │  │  🚀 Search Routes (Phase 2)              │ │
+   │  │  ⏳ Reports Routes (Phase 3)             │ │
+   │  │  ⏳ Auth Routes (2FA/SSO)                │ │
+   │  └──────────────────────────────────────────┘ │
+   │                       │                        │
+   │  ┌────────────────────┼────────────────────┐  │
+   │  │    Core Services   │                    │  │
+   │  │                    │                    │  │
+   │  │  • socketService   │                    │  │
+   │  │    (Real-Time)     │                    │  │
+   │  │                    │                    │  │
+   │  │  • storageService  │                    │  │
+   │  │    (Cloud Upload)  │                    │  │
+   │  │                    │                    │  │
+   │  │  • documentService │                    │  │
+   │  │    (Business Logic)│                    │  │
+   │  │                    │                    │  │
+   │  │  • searchService ──┼──────┐             │  │
+   │  │    (Elasticsearch) │      │             │  │
+   │  │                    │      │             │  │
+   │  └────────────────────┼──────┼─────────────┘  │
+   └───────────────────────┼──────┼────────────────┘
+                           │      │
+        ┌──────────────────┼──────┼────────────────┐
+        │                  │      │                │
+   ┌────▼────────┐  ┌──────▼──┐  │          ┌─────▼────────┐
+   │  MongoDB    │  │Cloudinary│ │          │ Elasticsearch│
+   │  (Port      │  │  / AWS   │ │          │   (Port 9200)│
+   │   27017)    │  │ S3       │ │          │              │
+   │             │  │(CDN)     │ │          │ (Fuzzy Search)
+   │ ✅ Used     │  │          │ │          │ (Facets)     │
+   │    Collections:           │ │          │              │
+   │   - Users   │  ✅ Used    │ │          │ 🚀 Phase 2   │
+   │   - Orgs    │  Files:     │ │          └──────────────┘
+   │   - Props   │  - Docs     │ │
+   │   - Tenants │  - Images   │ │
+   │   - Invoices│  - Videos   │ │
+   │  😍 Notif   │           │ │
+   │  😍 Docs    │ 🔐 Secure  │ │
+   │   - Etc.    │    CDN     │ │
+   └─────────────┘  └──────────┘ │
+                                 │
+                    ┌────────────┤
+                    │            │
+              ┌─────▼──────┐  ┌──▼────────┐
+              │ Redis      │  │AWS Events │
+              │(Caching)   │  │Queue      │
+              │(Session)   │  │(Webhooks) │
+              │⏳ Future   │  │⏳ Future  │
+              └────────────┘  └───────────┘
+```
+
+---
+
+## 📊 Phase 1: Real-Time Notifications Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CLIENT BROWSER                            │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              NotificationBell Component                  │   │
+│  │                                                          │   │
+│  │  ┌─────────────────────────────────────────────────┐    │   │
+│  │  │  Bell Icon + Badge (Unread Count)              │    │   │
+│  │  │  Shows: 🔔 (3) ← Displays count                │    │   │
+│  │  └──────────────┬──────────────────────────────────┘    │   │
+│  │                 │ useRealtimeNotifications Hook         │   │
+│  │  ┌──────────────▼──────────────────────────────────┐    │   │
+│  │  │  Notification Dropdown                        │    │   │
+│  │  │  - Shows last 10 notifications                │    │   │
+│  │  │  - Mark as read on click                      │    │   │
+│  │  │  - Real-time updates via WebSocket            │    │   │
+│  │  └──────────────┬──────────────────────────────────┘    │   │
+│  │                 │ Socket.io Events                      │   │
+│  │  ┌──────────────▼──────────────────────────────────┐    │   │
+│  │  │  Notification Preferences Page                │    │   │
+│  │  │  - Email notifications (toggle)               │    │   │
+│  │  │  - SMS notifications (toggle)                 │    │   │
+│  │  │  - Sound alerts (toggle)                      │    │   │
+│  │  │  - Quiet hours (10pm-8am)                     │    │   │
+│  │  │  - Mute for 1 hour button                     │    │   │
+│  │  └──────────────────────────────────────────────────┘    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │ WebSocket Bidirectional
+                       │
+                       │ Send: User Sets Preferences
+                       │ Receive: Real-time Events
+                       │
+           ┌───────────▼────────────┐
+           │                        │
+           │    Socket.io Server    │
+           │    (Express.js)        │
+           │                        │
+           │  • Manages connections │
+           │  • Broadcasts events   │
+           │  • Handles rooms/org   │
+           │                        │
+           └────────┬───────┬───────┘
+                    │       │
+        ┌───────────▼──┐   │
+        │ Event         │   │ Save to DB
+        │ Listeners:    │   │
+        │              │   │
+        │ payment:      │   │
+        │ received      │   │
+        │              │   │
+        │ payment:      │   │
+        │ overdue       │   │
+        │              │   │
+        │ complaint:    │   │
+        │ filed         │   │
+        │              │   │
+        │ tenant:       │   │
+        │ verified      │   │
+        │              │   │
+        │ property:     │   │
+        │ vacancy       │   │
+        └───────┬───────┘   │
+                │           │
+          ┌─────▼───────┐   │
+          │ socketService   │   │
+          │ (Service Layer)│   │
+          │              │   │
+          │ Methods:     │   │
+          │ • notifyPayment│  │
+          │ • notifyOverdue│  │
+          │ • emitEvent  │   │
+          │ • handleConn │   │
+          │              │   │
+          └──────┬───────┘   │
+                 │           │
+          ┌──────▼────────┐  │
+          │  Notification │  │
+          │  Controller   │  │
+          │ (API Layer)  │  │
+          │              │  │
+          │ Endpoints:   │  │
+          │ GET /api/    │  │
+          │  notif       │  │
+          │ PUT /:id/    │  │
+          │  read        │  │
+          │ PUT /pref    │  │
+          │ DELETE /:id  │  │
+          │              │  │
+          └──────┬────────┘  │
+                 │           │
+                 │           │
+          ┌──────▼─────────────▼──────────┐
+          │                               │
+          │  Notification Model (MongoDB) │
+          │                               │
+          │  Fields:                      │
+          │  - organization (ref)         │
+          │  - recipient (user)           │
+          │  - type (payment/complaint)   │
+          │  - title, message, severity   │
+          │  - isRead (boolean)           │
+          │  - readAt (date)              │
+          │  - createdAt (date)           │
+          │  - metadata (json)            │
+          │                               │
+          └───────────────────────────────┘
+
+          ┌──────────────────────────────┐
+          │ NotificationPreference Model  │
+          │                               │
+          │  Fields:                      │
+          │  - user (ref)                 │
+          │  - email (bool)               │
+          │  - sms (bool)                 │
+          │  - sound (bool)               │
+          │  - quietHours { start, end }  │
+          │  - mutedUntil (date)          │
+          │  - categories (array)         │
+          │                               │
+          └───────────────────────────────┘
+```
+
+---
+
+## 📁 Phase 1: Document Management Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CLIENT BROWSER                            │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │           DocumentsPage (Main Container)                │   │
+│  │                                                          │   │
+│  │  ┌──────────────────────────────────────────────────┐   │   │
+│  │  │     DocumentUploader Component                  │   │   │
+│  │  │     (Drag-Drop File Upload)                     │   │   │
+│  │  │                                                 │   │   │
+│  │  │  1. Drag file to zone or click                 │   │   │
+│  │  │  2. Select category (tenant_docs, receipts)    │   │   │
+│  │  │  3. Add tags (important, legal, etc)           │   │   │
+│  │  │  4. Shows upload progress                      │   │   │
+│  │  │  5. Success message with file link             │   │   │
+│  │  └──────────────┬───────────────────────────────────┘   │   │
+│  │                 │ FormData: file + category + tags      │   │
+│  │                 │ Multipart Upload                      │   │
+│  │                 │                                       │   │
+│  │  ┌──────────────▼───────────────────────────────────┐   │   │
+│  │  │     DocumentLibrary Component                   │   │   │
+│  │  │     (Gallery + List View)                       │   │   │
+│  │  │                                                 │   │   │
+│  │  │  Features:                                      │   │   │
+│  │  │  • Gallery/List view toggle                    │   │   │
+│  │  │  • Search bar (real-time)                      │   │   │
+│  │  │  • Category filter dropdown                    │   │   │
+│  │  │  • Tag filter pills                            │   │   │
+│  │  │  • Date range picker                           │   │   │
+│  │  │  • Sort by (date, size, name)                  │   │   │
+│  │  │  • Pagination (20 per page)                    │   │   │
+│  │  │                                                 │   │   │
+│  │  │  For each document:                            │   │   │
+│  │  │  • Show thumbnail/icon                         │   │   │
+│  │  │  • Filename and size                           │   │   │
+│  │  │  • Upload date                                 │   │   │
+│  │  │  • Action buttons:                             │   │   │
+│  │  │    - Star/favorite                             │   │   │
+│  │  │    - Share (generates link)                    │   │   │
+│  │  │    - Download                                  │   │   │
+│  │  │    - Preview                                   │   │   │
+│  │  │    - Delete (soft)                             │   │   │
+│  │  └──────────────┬───────────────────────────────────┘   │   │
+│  │                 │                                        │   │
+│  └─────────────────┼─────────────────────────────────────────┘   │
+└──────────────────┼───────────────────────────────────────────────┘
+                   │ Multiple API Calls (REST)
+                   │
+        ┌──────────┼──────────────────────────┐
+        │          │                          │
+        │          │                          │
+    ┌───▼──────┐ ┌─▼───────────┐  ┌──────────▼────┐
+    │  Upload  │ │  List/Search│  │  Delete/Share │
+    │  POST    │ │  GET        │  │  DELETE/POST  │
+    └───┬──────┘ └─┬───────────┘  └──────────┬────┘
+        │          │                         │
+        │          │                         │
+    ┌───▼──────────▼─────────────────────────▼───────┐
+    │                                                 │
+    │   Document Controller (Express Routes)        │
+    │                                                 │
+    │   POST   /api/documents/upload                │
+    │   GET    /api/documents                       │
+    │   GET    /api/documents/search                │
+    │   GET    /api/documents/:id                   │
+    │   PUT    /api/documents/:id                   │
+    │   POST   /api/documents/:id/star              │
+    │   POST   /api/documents/:id/share             │
+    │   GET    /api/documents/:id/version           │
+    │   DELETE /api/documents/:id                   │
+    │   POST   /api/documents/:id/restore           │
+    │   GET    /api/documents/stats                 │
+    │                                                 │
+    └───┬────────────────────────────────────────────┘
+        │
+        │ Service Layer (Business Logic)
+        │
+    ┌───▼────────────────────────────────────────────┐
+    │  documentService                               │
+    │  storageService                                │
+    │                                                 │
+    │  • Upload to Cloudinary / S3                   │
+    │  • Generate thumbnails                         │
+    │  • Scan for viruses                            │
+    │  • Index for search (MongoDB text index)       │
+    │  • Version tracking                            │
+    │  • Soft delete management                      │
+    │  • Share link generation (expires in 7 days)   │
+    │  • Statistics calculation                      │
+    │                                                 │
+    └───┬────────────────────────────────────────────┘
+        │
+        │ Data Layer
+        │
+        └────────┬────────────────────┬────────────────┐
+                 │                    │                │
+        ┌────────▼───────────┐  ┌─────▼──────┐  ┌─────▼──────────┐
+        │   MongoDB          │  │ Cloudinary │  │ Elasticsearch  │
+        │   Document         │  │ / AWS S3   │  │ (Phase 2)      │
+        │   Collection       │  │            │  │                │
+        │                    │  │ File       │  │ Full-text      │
+        │ Fields:            │  │ Storage    │  │ Search Index   │
+        │ - filename         │  │ + CDN      │  │                │
+        │ - originalName     │  │            │  │ Fuzzy matching │
+        │ - url (pointer)    │  │ URL format:│  │ Facets/filters │
+        │ - cloudinaryId     │  │ https://   │  │ Autocomplete   │
+        │ - fileType         │  │ cdn.../    │  │                │
+        │ - size             │  │ doc123.pdf │  │                │
+        │ - category         │  │            │  │                │
+        │ - tags             │  │            │  │                │
+        │ - owner (user)     │  │            │  │                │
+        │ - organization     │  │            │  │                │
+        │ - isStarred        │  │            │  │                │
+        │ - isPublic         │  │            │  │                │
+        │ - versions         │  │            │  │                │
+        │ - shareToken       │  │            │  │                │
+        │ - shareExpiresAt   │  │            │  │                │
+        │ - createdAt        │  │            │  │                │
+        │ - updatedAt        │  │            │  │                │
+        │ - deletedAt        │  │            │  │                │
+        │                    │  │            │  │                │
+        │ Indexes:           │  │            │  │                │
+        │ - text (search)    │  │            │  │                │
+        │ - category         │  │            │  │                │
+        │ - tags             │  │            │  │                │
+        │ - organization     │  │            │  │                │
+        │ - owner            │  │            │  │                │
+        │ - createdAt        │  │            │  │                │
+        │                    │  │            │  │                │
+        └────────────────────┘  └────────────┘  └────────────────┘
+```
+
+---
+
+## 🔍 Phase 2: Advanced Search Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CLIENT BROWSER                            │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │           AdvancedSearch Component                      │   │
+│  │                                                          │   │
+│  │  ┌──────────────────────────────────────────────────┐   │   │
+│  │  │ Search Type Tabs                                │   │   │
+│  │  │ [All] [Documents] [Properties] [Invoices] [...]│   │   │
+│  │  └──────────────────────────────────────────────────┘   │   │
+│  │                                                          │   │
+│  │  ┌──────────────────────────────────────────────────┐   │   │
+│  │  │ Search Bar                                      │   │   │
+│  │  │ ┌────────────────────────────────────────────┐  │   │   │
+│  │  │ │ 🔍 Search documents...                     │  │   │   │
+│  │  │ └────────────────────────────────────────────┘  │   │   │
+│  │  │                                                 │   │   │
+│  │  │ Debounce: 300ms                                │   │   │
+│  │  │ Real-time as you type                          │   │   │
+│  │  └──────────────────────────────────────────────────┘   │   │
+│  │           ▲                     │                       │   │
+│  │           │ Autocomplete        │ Suggestions API       │   │
+│  │           │ Suggestions         │                       │   │
+│  │  ┌────────┴──────────────────┐  │                       │   │
+│  │  │ • PDF file (45)           │  │                       │   │
+│  │  │ • Privacy Policy (23)     │  │                       │   │
+│  │  │ • Payment Receipt (12)    │  │                       │   │
+│  │  └───────────────────────────┘  │                       │   │
+│  │                                  │                       │   │
+│  │  ┌──────────────────────────────▼─────────────────┐     │   │
+│  │  │ Filter Panel (Collapsible)                     │     │   │
+│  │  │                                                │     │   │
+│  │  │ Category:     [Dropdown]                      │     │   │
+│  │  │ From Date:    [Date Picker]                   │     │   │
+│  │  │ To Date:      [Date Picker]                   │     │   │
+│  │  │ Size Range:   [Min] - [Max] MB               │     │   │
+│  │  │ Tags:         [X important] [X legal]         │     │   │
+│  │  │ Starred:      [☐] Starred only               │     │   │
+│  │  │                                                │     │   │
+│  │  │ [Clear Filters]                                │     │   │
+│  │  └───────────────────────────────────────────────┘     │   │
+│  │                                                          │   │
+│  │  ┌──────────────────────────────────────────────────┐   │   │
+│  │  │ Results Display                                 │   │   │
+│  │  │                                                 │   │   │
+│  │  │ Found 847 results                              │   │   │
+│  │  │                                                 │   │   │
+│  │  │ ┌────────────────────────────────────────────┐ │   │   │
+│  │  │ │ Lease Agreement.pdf      Score: 9.8       │ │   │   │
+│  │  │ │ lease agreement for property 123           │ │   │   │
+│  │  │ │ tenant_documents  legal  important        │ │   │   │
+│  │  │ └────────────────────────────────────────────┘ │   │   │
+│  │  │                                                 │   │   │
+│  │  │ ┌────────────────────────────────────────────┐ │   │   │
+│  │  │ │ Payment Receipt.docx     Score: 8.2       │ │   │   │
+│  │  │ │ payment receipt from tenant                │ │   │   │
+│  │  │ │ receipts  financial                        │ │   │   │
+│  │  │ └────────────────────────────────────────────┘ │   │   │
+│  │  │                                                 │   │   │
+│  │  │ [Prev] Page 1 of 42 [Next]                     │   │   │
+│  │  │                                                 │   │   │
+│  │  └───────────────────────────────────────────────┘   │   │
+│  │                                                          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+        ┌──────────┼──────────┬──────────┐
+        │          │          │          │
+    ┌───▼───┐  ┌───▼───┐  ┌──▼────┐  ┌──▼──────┐
+    │Search │  │Facets │  │Suggest│  │Health   │
+    │GET    │  │GET    │  │GET    │  │GET      │
+    └───┬───┘  └───┬───┘  └──┬────┘  └──┬──────┘
+        │          │         │          │
+        │          │         │          │
+    ┌───▼──────────▼─────────▼──────────▼────────┐
+    │                                             │
+    │   Advanced Search Controller (Routes)      │
+    │                                             │
+    │   GET /api/search/documents                │
+    │   GET /api/search/properties               │
+    │   GET /api/search/invoices                 │
+    │   GET /api/search/tenants                  │
+    │   GET /api/search/global                   │
+    │   GET /api/search/facets                   │
+    │   GET /api/search/suggestions              │
+    │   GET /api/search/health                   │
+    │   POST /api/search/advanced                │
+    │   POST /api/search/saved                   │
+    │   GET /api/search/saved-list               │
+    │                                             │
+    └───┬──────┬─────────────────────────────────┘
+        │      │
+        │      └─────────┐
+        │                │
+    ┌───▼────────────────▼────────────────────────┐
+    │                                              │
+    │  Advanced Search Service                    │
+    │  (Elasticsearch Integration)                │
+    │                                              │
+    │  • Query parsing                            │
+    │  • Fuzzy matching (AUTO fuzziness)          │
+    │  • Multi-field search                       │
+    │  • Range filtering                          │
+    │  • Aggregations (facets)                    │
+    │  • Autocomplete suggestions                 │
+    │  • Result ranking (TF-IDF)                 │
+    │                                              │
+    │  Methods:                                   │
+    │  • advancedSearch()                         │
+    │  • searchProperties()                       │
+    │  • searchInvoices()                         │
+    │  • searchTenants()                          │
+    │  • globalSearch()                           │
+    │  • getAutocompleteSuggestions()            │
+    │  • indexDocuments()                         │
+    │  • healthCheck()                            │
+    │                                              │
+    └───┬──────────────────────────────────────────┘
+        │
+        │ Elasticsearch HTTP Queries
+        │
+    ┌───▼──────────────────────────────────────────┐
+    │                                               │
+    │  Elasticsearch (Port 9200)                  │
+    │                                               │
+    │  Indices:                                    │
+    │  • pg-documents                             │
+    │    - Filename (text, 3x weight)             │
+    │    - Description (text)                     │
+    │    - Category (keyword)                     │
+    │    - Tags (keyword)                         │
+    │    - Owner (keyword)                        │
+    │    - Size (numeric range)                   │
+    │    - UploadedAt (date range)                │
+    │    - IsStarred (boolean)                    │
+    │                                               │
+    │  • pg-properties                            │
+    │    - Name (text, 3x weight)                 │
+    │    - Address (text, 2x weight)              │
+    │    - City, State (keyword)                  │
+    │    - RentRange (numeric)                    │
+    │    - Amenities (keyword)                    │
+    │                                               │
+    │  • pg-invoices                              │
+    │    - InvoiceNumber (keyword)                │
+    │    - TenantName (text, 3x weight)          │
+    │    - Amount (numeric)                       │
+    │    - Status (keyword)                       │
+    │    - IssueDate (date range)                 │
+    │                                               │
+    │  • pg-tenants                               │
+    │    - Name (text, 3x weight)                 │
+    │    - Email, Phone (keyword)                 │
+    │    - Status (keyword)                       │
+    │    - PropertyId (keyword)                   │
+    │                                               │
+    │  Features:                                   │
+    │  ✅ Fuzzy matching (typo tolerance)         │
+    │  ✅ Phrase matching (exact phrases)         │
+    │  ✅ Wildcards (partial matching)            │
+    │  ✅ Boolean operators (AND/OR/NOT)          │
+    │  ✅ Range queries (dates, amounts)          │
+    │  ✅ Aggregations (facets)                   │
+    │  ✅ Sorting (relevance, date, size)         │
+    │  ✅ Highlighting (query matches)            │
+    │  ✅ Autocomplete (prefix matching)          │
+    │  ✅ Pagination (skip/limit)                 │
+    │                                               │
+    └────────────────────────────────────────────┘
+
+    Example Query:
+    GET /pg-documents/_search
+    {
+      "query": {
+        "bool": {
+          "must": {
+            "multi_match": {
+              "query": "lease",
+              "fields": ["filename^3", "description"],
+              "fuzziness": "AUTO"
+            }
+          },
+          "filter": [
+            { "term": { "category": "tenant_documents" } },
+            { "range": { "uploadedAt": { "gte": "2024-01-01" } } }
+          ]
+        }
+      },
+      "aggs": {
+        "categories": { "terms": { "field": "category" } },
+        "tags": { "terms": { "field": "tags" } }
+      }
+    }
+```
+
+---
+
+## 🔄 Data Sync & Consistency
+
+```
+MongoDB (Write Source)
+    ↓
+    ├─→ Document uploaded/updated
+    │
+    ├─→ dockerService saves to MongoDB
+    │
+    ├─→ Also index to Elasticsearch
+    │
+    └─→ Emit WebSocket notification
+
+Result in:
+• MongoDB: Source of truth
+• Elasticsearch: Optimized search index
+• WebSocket: Real-time UI updates
+• Cache (future): Quick access
+
+Consistency Pattern:
+1. Write to MongoDB first
+2. Update Elasticsearch asynchronously
+3. If search fails, MongoDB fallback
+4. Notify clients via WebSocket
+```
+
+---
+
+## 🚀 Deployment Architecture
+
+```
+Client (Port 5173)
+    ↓ HTTPS
+┌───────────────────────────────────────┐
+│  Nginx / Cloudflare (Load Balancer)   │
+│  (SSL, Caching, Rate Limiting)        │
+└───────────────┬───────────────────────┘
+                ↓
+    ┌───────────┴───────────┐
+    │                       │
+┌───▼─────┐          ┌─────▼───┐
+│ Server  │          │ Server  │
+│ Pod 1   │          │ Pod 2   │
+│ (5000)  │          │ (5000)  │
+│         │          │         │
+│Node.js  │          │Node.js  │
+│+Express │          │+Express │
+└───┬─────┘          └─────┬───┘
+    │ Shared Database      │
+    │ (MongoDB Replica Set)│
+    └─────────┬────────────┘
+              ↓
+    ┌─────────────────────┐
+    │ MongoDB Cluster     │
+    │ (Primary + 2 Sec)   │
+    │ (Sharded if needed) │
+    └─────────────────────┘
+
+    ┌─────────────────────┐
+    │ Elasticsearch Cluster│
+    │ (3 Data Nodes)      │
+    │ (Replicated)        │
+    └─────────────────────┘
+
+    ┌─────────────────────┐
+    │ Cloudinary CDN      │
+    │ (Asset Delivery)    │
+    │ (Global)            │
+    └─────────────────────┘
+```
+
+---
+
+## 📈 Scaling Strategy
+
+```
+Phase 1 (Current - Single Instance)
+├─ 1x Backend Server
+├─ 1x MongoDB
+└─ File storage local/Cloudinary
+
+Phase 2 (Growth - Multiple Instances)
+├─ 2-4x Backend Servers (Load Balanced)
+├─ MongoDB Replica Set
+├─ Elasticsearch Cluster
+└─ Redis Cache Layer
+
+Phase 3 (Scale - Enterprise)
+├─ Kubernetes Cluster
+├─ Auto-scaling Backends
+├─ MongoDB Sharded Cluster
+├─ Elasticsearch Multi-Cluster
+├─ Message Queue (RabbitMQ/Kafka)
+├─ CDN (CloudFront/Cloudflare)
+└─ Global presence
+```
+
+---
+
+## 🔐 Security Layers
+
+```
+Client
+  ↓ HTTPS/TLS
+│ ├─ Certificate pinning
+│ ├─ CSP headers
+│ └─ XSS protection
+Gate
+  ↓
+API Gateway / Load Balancer
+  ├─ Rate limiting
+  ├─ DDoS protection
+  ├─ IP whitelisting
+  └─ WAF (Web Application Firewall)
+  ↓
+Express Server
+  ├─ JWT authentication
+  ├─ CORS validation
+  ├─ Input sanitization
+  ├─ SQL injection prevention
+  ├─ CSRF tokens
+  └─ Security headers
+  ↓
+Database
+  ├─ Encryption at rest
+  ├─ Access control
+  ├─ User isolation (tenant)
+  ├─ Audit logging
+  └─ Backup encryption
+```
+
+---
+
+**Architecture Status:** ✅ Designed  
+**Phase 1 Deployment:** ✅ Ready  
+**Phase 2 Deployment:** 🚀 In Progress  
+**Scalability:** ✅ Planned & Documented
+
